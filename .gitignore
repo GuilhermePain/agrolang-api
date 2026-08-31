@@ -1,0 +1,13 @@
+.env
+*.log
+/bin/
+/tmp/
+agrolang-api
+/api
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
