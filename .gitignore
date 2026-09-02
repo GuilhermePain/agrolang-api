@@ -11,3 +11,6 @@ agrolang-api
 
 # OS
 .DS_Store
+
+# Base Docs
+.docs
