@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS properties;
+DROP TYPE IF EXISTS crop_stage;
+DROP TABLE IF EXISTS producers;
