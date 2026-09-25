@@ -62,6 +62,14 @@ func TestProducerHandler_Create_ReturnsCreatedProducer(t *testing.T) {
 	if got.Name != "Joao" {
 		t.Errorf("expected Name Joao, got %q", got.Name)
 	}
+	if got.WhatsAppPhone != "5511999999999" {
+		t.Errorf("expected WhatsAppPhone 5511999999999, got %q", got.WhatsAppPhone)
+	}
+
+	rawBody := rec.Body.String()
+	if !bytes.Contains([]byte(rawBody), []byte(`"whatsapp_phone":"5511999999999"`)) {
+		t.Errorf("expected response JSON to use snake_case whatsapp_phone key, got %s", rawBody)
+	}
 }
 
 func TestProducerHandler_GetByID_ReturnsProducer(t *testing.T) {

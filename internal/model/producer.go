@@ -3,11 +3,11 @@ package model
 import "time"
 
 type Producer struct {
-	ID            string
-	Name          string
-	WhatsAppPhone string
-	City          string
-	State         string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	WhatsAppPhone string    `json:"whatsapp_phone"`
+	City          string    `json:"city"`
+	State         string    `json:"state"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }

@@ -68,15 +68,15 @@ type Property struct {
 }
 
 type WeatherReading struct {
-	Time            time.Time
-	TempAvgC        float64
-	HumidityPct     float64
-	PrecipitationMM float64
+	Time            time.Time `json:"time"`
+	TempAvgC        float64   `json:"temp_avg_c"`
+	HumidityPct     float64   `json:"humidity_pct"`
+	PrecipitationMM float64   `json:"precipitation_mm"`
 }
 
 type Result struct {
-	Level Level
-	Alert Alert
+	Level Level `json:"level"`
+	Alert Alert `json:"alert"`
 }
 
 const (
