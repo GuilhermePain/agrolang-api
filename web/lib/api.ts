@@ -42,16 +42,76 @@ export type WeatherReading = {
   precipitation_mm: number;
 };
 
+export type CropStage = "germination" | "flowering" | "harvest";
+
+export type NewProducer = {
+  name: string;
+  whatsapp_phone: string;
+  city: string;
+  state: string;
+};
+
+export type NewProperty = {
+  producer_id: string;
+  latitude: number;
+  longitude: number;
+  crop: string;
+  soil_type: string;
+  crop_stage: CropStage;
+};
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function apiFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { cache: "no-store" });
   if (!res.ok) {
-    throw new Error(`API ${path} failed: ${res.status}`);
+    throw new ApiError(`API ${path} failed: ${res.status}`, res.status);
   }
   return res.json() as Promise<T>;
 }
 
+async function apiPost<TBody, TResult>(path: string, body: TBody): Promise<TResult> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let message = `API ${path} failed: ${res.status}`;
+    try {
+      const payload = (await res.json()) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      // response body wasn't JSON; keep the generic message
+    }
+    throw new ApiError(message, res.status);
+  }
+  return res.json() as Promise<TResult>;
+}
+
 export function listProperties(): Promise<Property[]> {
   return apiFetch<Property[]>("/properties");
+}
+
+export function listProducers(): Promise<Producer[]> {
+  return apiFetch<Producer[]>("/producers");
+}
+
+export function createProducer(producer: NewProducer): Promise<Producer> {
+  return apiPost<NewProducer, Producer>("/producers", producer);
+}
+
+export function createProperty(property: NewProperty): Promise<Property> {
+  return apiPost<NewProperty, Property>("/properties", property);
 }
 
 export function getPropertyAlerts(propertyId: string): Promise<Alert[]> {
