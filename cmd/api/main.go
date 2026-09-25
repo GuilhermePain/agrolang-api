@@ -10,6 +10,7 @@ import (
 
 	"github.com/GuilhermePain/agrolang-api/internal/app"
 	"github.com/GuilhermePain/agrolang-api/internal/config"
+	"github.com/GuilhermePain/agrolang-api/internal/handler"
 	"github.com/GuilhermePain/agrolang-api/internal/notifier"
 	"github.com/GuilhermePain/agrolang-api/internal/repository"
 	"github.com/GuilhermePain/agrolang-api/internal/weather"
@@ -43,6 +44,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	handler.NewProducerHandler(producerRepo).Register(mux)
+	handler.NewPropertyHandler(propertyRepo, alertRepo).Register(mux)
+	handler.NewAlertHandler(alertRepo).Register(mux)
 
 	addr := ":" + cfg.HTTPPort
 	log.Printf("agrolang-api listening on %s", addr)
