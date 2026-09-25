@@ -54,6 +54,7 @@ type forecastResponse struct {
 		Time               []string  `json:"time"`
 		Temperature2m      []float64 `json:"temperature_2m"`
 		RelativeHumidity2m []float64 `json:"relative_humidity_2m"`
+		Precipitation      []float64 `json:"precipitation"`
 	} `json:"hourly"`
 }
 
@@ -88,9 +89,10 @@ func (c *OpenMeteoClient) FetchForecast(ctx context.Context, coords Coordinates)
 			return nil, fmt.Errorf("weather: parse time %q: %w", ts, err)
 		}
 		readings = append(readings, risk.WeatherReading{
-			Time:        t,
-			TempAvgC:    parsed.Hourly.Temperature2m[i],
-			HumidityPct: parsed.Hourly.RelativeHumidity2m[i],
+			Time:            t,
+			TempAvgC:        parsed.Hourly.Temperature2m[i],
+			HumidityPct:     parsed.Hourly.RelativeHumidity2m[i],
+			PrecipitationMM: parsed.Hourly.Precipitation[i],
 		})
 	}
 

@@ -19,7 +19,7 @@ func TestOpenMeteoClient_FetchForecast_ParsesHourlyReadings(t *testing.T) {
 				"time": ["2026-08-30T00:00", "2026-08-30T01:00"],
 				"temperature_2m": [36.5, 37.0],
 				"relative_humidity_2m": [25.0, 20.0],
-				"precipitation": [0.0, 0.0],
+				"precipitation": [1.5, 0.0],
 				"wind_speed_10m": [8.5, 9.2]
 			}
 		}`))
@@ -43,6 +43,9 @@ func TestOpenMeteoClient_FetchForecast_ParsesHourlyReadings(t *testing.T) {
 	}
 	if first.HumidityPct != 25.0 {
 		t.Errorf("expected HumidityPct 25.0, got %v", first.HumidityPct)
+	}
+	if first.PrecipitationMM != 1.5 {
+		t.Errorf("expected PrecipitationMM 1.5, got %v", first.PrecipitationMM)
 	}
 	if first.Time.IsZero() {
 		t.Errorf("expected non-zero Time")
