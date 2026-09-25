@@ -1,9 +1,9 @@
 import type { Alert, RiskLevel } from "./api";
 
 export const riskColors: Record<RiskLevel, string> = {
-  low: "#22c55e",
-  medium: "#eab308",
-  critical: "#ef4444",
+  low: "#3f7d4f",
+  medium: "#b8862a",
+  critical: "#b23a2c",
 };
 
 export const riskLabels: Record<RiskLevel, string> = {

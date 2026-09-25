@@ -11,6 +11,12 @@ const alertTypeLabels: Record<string, string> = {
   none: "Sem risco",
 };
 
+const riskBadgeClass: Record<string, string> = {
+  low: "bg-risk-low-bg text-risk-low border-risk-low",
+  medium: "bg-risk-medium-bg text-risk-medium border-risk-medium",
+  critical: "bg-risk-critical-bg text-risk-critical border-risk-critical",
+};
+
 export default async function PropertyDetail({ params }: PageProps<"/properties/[id]">) {
   const { id } = await params;
 
@@ -30,62 +36,89 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <Link href="/" className="text-sm text-blue-600 underline">
-        &larr; Voltar ao mapa
-      </Link>
+    <div className="flex flex-1 flex-col gap-8 p-5 sm:p-8">
+      <div className="rise-in">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-accent"
+        >
+          &larr; Voltar ao mapa
+        </Link>
+        <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.25em] text-ink-soft">
+          Ficha do talhão
+        </p>
+      </div>
 
-      {error && <p className="text-red-600">{error}</p>}
+      {error && (
+        <p className="border-2 border-risk-critical bg-risk-critical-bg px-4 py-3 font-mono text-sm text-risk-critical">
+          {error}
+        </p>
+      )}
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">Previsão para os próximos dias</h2>
+      <section className="rise-in" style={{ animationDelay: "80ms" }}>
+        <h2 className="mb-3 font-display text-xl italic text-ink">
+          Previsão para os próximos dias
+        </h2>
         {daily.length === 0 ? (
-          <p className="text-sm text-zinc-500">Sem dados de previsão disponíveis.</p>
+          <p className="border-2 border-dashed border-line px-4 py-6 font-mono text-sm text-ink-soft">
+            Sem dados de previsão disponíveis.
+          </p>
         ) : (
-          <table className="w-full max-w-2xl border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-black/10 text-left dark:border-white/10">
-                <th className="py-2">Data</th>
-                <th className="py-2">Mín (°C)</th>
-                <th className="py-2">Máx (°C)</th>
-                <th className="py-2">Chuva (mm)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {daily.map((day) => (
-                <tr key={day.date} className="border-b border-black/5 dark:border-white/5">
-                  <td className="py-2">{day.date}</td>
-                  <td className="py-2">{day.minTempC.toFixed(1)}</td>
-                  <td className="py-2">{day.maxTempC.toFixed(1)}</td>
-                  <td className="py-2">{day.totalPrecipitationMM.toFixed(1)}</td>
+          <div className="overflow-x-auto border-2 border-ink bg-card shadow-[var(--shadow-hard)]">
+            <table className="w-full min-w-[520px] border-collapse font-mono text-sm">
+              <thead>
+                <tr className="border-b-2 border-ink bg-paper-deep text-left uppercase tracking-wide text-[11px] text-ink-soft">
+                  <th className="px-4 py-2.5 font-semibold">Data</th>
+                  <th className="px-4 py-2.5 font-semibold">Mín (°C)</th>
+                  <th className="px-4 py-2.5 font-semibold">Máx (°C)</th>
+                  <th className="px-4 py-2.5 font-semibold">Chuva (mm)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {daily.map((day, i) => (
+                  <tr
+                    key={day.date}
+                    className={`border-b border-line ${i % 2 === 1 ? "bg-paper" : ""}`}
+                  >
+                    <td className="px-4 py-2 tabular">{day.date}</td>
+                    <td className="px-4 py-2 tabular">{day.minTempC.toFixed(1)}</td>
+                    <td className="px-4 py-2 tabular">{day.maxTempC.toFixed(1)}</td>
+                    <td className="px-4 py-2 tabular">{day.totalPrecipitationMM.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">Histórico de alertas</h2>
+      <section className="rise-in" style={{ animationDelay: "160ms" }}>
+        <h2 className="mb-3 font-display text-xl italic text-ink">Histórico de alertas</h2>
         {alerts.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nenhum alerta registrado.</p>
+          <p className="border-2 border-dashed border-line px-4 py-6 font-mono text-sm text-ink-soft">
+            Nenhum alerta registrado.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2.5">
             {alerts.map((alert) => (
               <li
                 key={alert.id}
-                className="rounded border border-black/10 px-3 py-2 text-sm dark:border-white/10"
+                className="flex flex-col gap-1 border-2 border-line bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">
+                <div>
+                  <span className="font-display text-base text-ink">
                     {alertTypeLabels[alert.alert_type] ?? alert.alert_type}
                   </span>
-                  <span>{riskLabels[alert.level]}</span>
+                  <div className="font-mono text-xs text-ink-soft">
+                    {new Date(alert.period_start).toLocaleDateString("pt-BR")} a{" "}
+                    {new Date(alert.period_end).toLocaleDateString("pt-BR")}
+                  </div>
                 </div>
-                <div className="text-zinc-500">
-                  {new Date(alert.period_start).toLocaleDateString("pt-BR")} a{" "}
-                  {new Date(alert.period_end).toLocaleDateString("pt-BR")}
-                </div>
+                <span
+                  className={`w-fit shrink-0 border-2 px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide ${riskBadgeClass[alert.level]}`}
+                >
+                  {riskLabels[alert.level]}
+                </span>
               </li>
             ))}
           </ul>

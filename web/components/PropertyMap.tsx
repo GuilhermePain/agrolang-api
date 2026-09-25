@@ -29,15 +29,23 @@ export default function PropertyMap({ items }: { items: PropertyWithAlerts[] }) 
           <CircleMarker
             key={property.id}
             center={[property.latitude, property.longitude]}
-            radius={10}
-            pathOptions={{ color: riskColors[level], fillColor: riskColors[level], fillOpacity: 0.8 }}
+            radius={11}
+            pathOptions={{
+              color: "#2a2420",
+              weight: 2,
+              fillColor: riskColors[level],
+              fillOpacity: 0.85,
+            }}
           >
             <Popup>
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold">{property.crop}</span>
-                <span>Risco atual: {riskLabels[level]}</span>
-                <Link href={`/properties/${property.id}`} className="text-blue-600 underline">
-                  Ver detalhes
+              <div className="flex flex-col gap-1 font-mono">
+                <span className="font-display text-base italic text-ink">{property.crop}</span>
+                <span className="text-xs text-ink-soft">Risco atual: {riskLabels[level]}</span>
+                <Link
+                  href={`/properties/${property.id}`}
+                  className="mt-1 text-xs font-semibold uppercase tracking-wide text-accent underline"
+                >
+                  Ver detalhes &rarr;
                 </Link>
               </div>
             </Popup>
