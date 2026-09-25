@@ -46,12 +46,12 @@ func main() {
 	})
 
 	handler.NewProducerHandler(producerRepo).Register(mux)
-	handler.NewPropertyHandler(propertyRepo, alertRepo).Register(mux)
+	handler.NewPropertyHandler(propertyRepo, alertRepo, weatherClient).Register(mux)
 	handler.NewAlertHandler(alertRepo).Register(mux)
 
 	addr := ":" + cfg.HTTPPort
 	log.Printf("agrolang-api listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, handler.WithCORS(mux)); err != nil {
 		log.Fatal(err)
 	}
 }

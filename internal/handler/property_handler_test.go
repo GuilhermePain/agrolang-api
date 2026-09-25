@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/GuilhermePain/agrolang-api/internal/handler"
 	"github.com/GuilhermePain/agrolang-api/internal/model"
 	"github.com/GuilhermePain/agrolang-api/internal/repository"
+	"github.com/GuilhermePain/agrolang-api/internal/service/risk"
+	"github.com/GuilhermePain/agrolang-api/internal/weather"
 )
 
 type fakePropertyStore struct {
@@ -43,9 +46,18 @@ func (f *fakePropertyAlertLister) ListByProperty(ctx context.Context, propertyID
 	return f.byProperty[propertyID], nil
 }
 
+type fakePropertyForecastFetcher struct {
+	readings []risk.WeatherReading
+	err      error
+}
+
+func (f *fakePropertyForecastFetcher) FetchForecast(ctx context.Context, coords weather.Coordinates) ([]risk.WeatherReading, error) {
+	return f.readings, f.err
+}
+
 func TestPropertyHandler_Create_ReturnsCreatedProperty(t *testing.T) {
 	store := &fakePropertyStore{}
-	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{})
+	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -71,7 +83,7 @@ func TestPropertyHandler_GetByID_ReturnsProperty(t *testing.T) {
 	store := &fakePropertyStore{byID: map[string]model.Property{
 		"prop-1": {ID: "prop-1", Crop: "corn"},
 	}}
-	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{})
+	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -87,7 +99,7 @@ func TestPropertyHandler_GetByID_ReturnsProperty(t *testing.T) {
 
 func TestPropertyHandler_GetByID_NotFound_Returns404(t *testing.T) {
 	store := &fakePropertyStore{byID: map[string]model.Property{}}
-	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{})
+	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -103,7 +115,7 @@ func TestPropertyHandler_GetByID_NotFound_Returns404(t *testing.T) {
 
 func TestPropertyHandler_List_ReturnsAllProperties(t *testing.T) {
 	store := &fakePropertyStore{all: []model.Property{{ID: "p1"}, {ID: "p2"}}}
-	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{})
+	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -129,7 +141,7 @@ func TestPropertyHandler_ListAlerts_ReturnsAlertsForProperty(t *testing.T) {
 	alertLister := &fakePropertyAlertLister{byProperty: map[string][]model.Alert{
 		"prop-1": {{ID: "a1", PropertyID: "prop-1", AlertType: "frost"}},
 	}}
-	h := handler.NewPropertyHandler(store, alertLister)
+	h := handler.NewPropertyHandler(store, alertLister, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -147,5 +159,49 @@ func TestPropertyHandler_ListAlerts_ReturnsAlertsForProperty(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].AlertType != "frost" {
 		t.Fatalf("expected 1 frost alert, got %v", got)
+	}
+}
+
+func TestPropertyHandler_Forecast_ReturnsReadingsForProperty(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{
+		"prop-1": {ID: "prop-1", Latitude: -22.9, Longitude: -47.06},
+	}}
+	fetcher := &fakePropertyForecastFetcher{readings: []risk.WeatherReading{
+		{Time: time.Now(), TempAvgC: 25, HumidityPct: 50},
+	}}
+	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, fetcher)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/properties/prop-1/forecast", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got []risk.WeatherReading
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 1 || got[0].TempAvgC != 25 {
+		t.Fatalf("expected 1 reading with TempAvgC 25, got %v", got)
+	}
+}
+
+func TestPropertyHandler_Forecast_PropertyNotFound_Returns404(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{}}
+	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/properties/missing/forecast", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

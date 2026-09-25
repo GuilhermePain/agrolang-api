@@ -8,6 +8,8 @@ import (
 
 	"github.com/GuilhermePain/agrolang-api/internal/model"
 	"github.com/GuilhermePain/agrolang-api/internal/repository"
+	"github.com/GuilhermePain/agrolang-api/internal/service/risk"
+	"github.com/GuilhermePain/agrolang-api/internal/weather"
 )
 
 type PropertyStore interface {
@@ -20,13 +22,18 @@ type PropertyAlertLister interface {
 	ListByProperty(ctx context.Context, propertyID string) ([]model.Alert, error)
 }
 
-type PropertyHandler struct {
-	store  PropertyStore
-	alerts PropertyAlertLister
+type PropertyForecastFetcher interface {
+	FetchForecast(ctx context.Context, coords weather.Coordinates) ([]risk.WeatherReading, error)
 }
 
-func NewPropertyHandler(store PropertyStore, alerts PropertyAlertLister) *PropertyHandler {
-	return &PropertyHandler{store: store, alerts: alerts}
+type PropertyHandler struct {
+	store    PropertyStore
+	alerts   PropertyAlertLister
+	forecast PropertyForecastFetcher
+}
+
+func NewPropertyHandler(store PropertyStore, alerts PropertyAlertLister, forecast PropertyForecastFetcher) *PropertyHandler {
+	return &PropertyHandler{store: store, alerts: alerts, forecast: forecast}
 }
 
 func (h *PropertyHandler) Register(mux *http.ServeMux) {
@@ -34,6 +41,7 @@ func (h *PropertyHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /properties", h.list)
 	mux.HandleFunc("GET /properties/{id}", h.getByID)
 	mux.HandleFunc("GET /properties/{id}/alerts", h.listAlerts)
+	mux.HandleFunc("GET /properties/{id}/forecast", h.forecastFor)
 }
 
 func (h *PropertyHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -88,4 +96,26 @@ func (h *PropertyHandler) listAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, alerts)
+}
+
+func (h *PropertyHandler) forecastFor(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	p, err := h.store.GetByID(r.Context(), id)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "property not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get property")
+		return
+	}
+
+	readings, err := h.forecast.FetchForecast(r.Context(), weather.Coordinates{Lat: p.Latitude, Lon: p.Longitude})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "failed to fetch forecast")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, readings)
 }
