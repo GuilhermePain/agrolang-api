@@ -38,6 +38,34 @@ func (r *ProducerRepository) Create(ctx context.Context, p model.Producer) (mode
 	return created, nil
 }
 
+func (r *ProducerRepository) ListAll(ctx context.Context) ([]model.Producer, error) {
+	const query = `
+		SELECT id, name, whatsapp_phone, city, state, created_at, updated_at
+		FROM producers
+		ORDER BY created_at`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("repository: list producers: %w", err)
+	}
+	defer rows.Close()
+
+	var all []model.Producer
+	for rows.Next() {
+		var p model.Producer
+		if err := rows.Scan(
+			&p.ID, &p.Name, &p.WhatsAppPhone, &p.City, &p.State, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("repository: scan producer: %w", err)
+		}
+		all = append(all, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repository: iterate producers: %w", err)
+	}
+	return all, nil
+}
+
 func (r *ProducerRepository) GetByID(ctx context.Context, id string) (model.Producer, error) {
 	const query = `
 		SELECT id, name, whatsapp_phone, city, state, created_at, updated_at

@@ -14,9 +14,11 @@ import (
 )
 
 type fakeProducerStore struct {
-	created  model.Producer
-	byID     map[string]model.Producer
+	created   model.Producer
+	byID      map[string]model.Producer
+	all       []model.Producer
 	createErr error
+	listErr   error
 }
 
 func (f *fakeProducerStore) Create(ctx context.Context, p model.Producer) (model.Producer, error) {
@@ -34,6 +36,13 @@ func (f *fakeProducerStore) GetByID(ctx context.Context, id string) (model.Produ
 		return model.Producer{}, repository.ErrNotFound
 	}
 	return p, nil
+}
+
+func (f *fakeProducerStore) ListAll(ctx context.Context) ([]model.Producer, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return f.all, nil
 }
 
 func TestProducerHandler_Create_ReturnsCreatedProducer(t *testing.T) {
@@ -110,6 +119,32 @@ func TestProducerHandler_GetByID_NotFound_Returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProducerHandler_List_ReturnsAllProducers(t *testing.T) {
+	store := &fakeProducerStore{all: []model.Producer{
+		{ID: "prod-1", Name: "Maria"},
+		{ID: "prod-2", Name: "Joao"},
+	}}
+	h := handler.NewProducerHandler(store)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/producers", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got []model.Producer
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("expected 2 producers, got %d", len(got))
 	}
 }
 

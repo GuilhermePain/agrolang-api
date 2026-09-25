@@ -13,6 +13,7 @@ import (
 type ProducerStore interface {
 	Create(ctx context.Context, p model.Producer) (model.Producer, error)
 	GetByID(ctx context.Context, id string) (model.Producer, error)
+	ListAll(ctx context.Context) ([]model.Producer, error)
 }
 
 type ProducerHandler struct {
@@ -25,6 +26,7 @@ func NewProducerHandler(store ProducerStore) *ProducerHandler {
 
 func (h *ProducerHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /producers", h.create)
+	mux.HandleFunc("GET /producers", h.list)
 	mux.HandleFunc("GET /producers/{id}", h.getByID)
 }
 
@@ -42,6 +44,16 @@ func (h *ProducerHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, created)
+}
+
+func (h *ProducerHandler) list(w http.ResponseWriter, r *http.Request) {
+	producers, err := h.store.ListAll(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list producers")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, producers)
 }
 
 func (h *ProducerHandler) getByID(w http.ResponseWriter, r *http.Request) {
