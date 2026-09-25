@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/GuilhermePain/agrolang-api/internal/model"
@@ -19,7 +20,8 @@ type ForecastFetcher interface {
 
 type ScanResult struct {
 	Property model.Property
-	Result   risk.Result
+	Results  []risk.Result
+	Readings []risk.WeatherReading
 	Err      error
 }
 
@@ -46,8 +48,12 @@ func Scan(ctx context.Context, lister PropertyLister, fetcher ForecastFetcher, c
 				return
 			}
 
-			result := risk.Evaluate(risk.Property{CropStage: risk.CropStage(p.CropStage)}, readings)
-			results[i] = ScanResult{Property: p, Result: result}
+			riskProperty := risk.Property{
+				Crop:      risk.Crop(strings.ToLower(p.Crop)),
+				CropStage: risk.CropStage(p.CropStage),
+			}
+			result := risk.EvaluateAll(riskProperty, readings)
+			results[i] = ScanResult{Property: p, Results: result, Readings: readings}
 		}(i, p)
 	}
 

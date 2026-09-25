@@ -83,9 +83,41 @@ func TestScan_EvaluatesRiskForEveryProperty(t *testing.T) {
 		if r.Err != nil {
 			t.Errorf("unexpected per-property error: %v", r.Err)
 		}
-		if r.Result.Level != risk.LevelLow {
-			t.Errorf("expected LevelLow, got %v", r.Result.Level)
+		if len(r.Results) != 1 || r.Results[0].Level != risk.LevelLow {
+			t.Errorf("expected single LevelLow result, got %v", r.Results)
 		}
+		if len(r.Readings) != 1 {
+			t.Errorf("expected Readings to carry the fetched forecast, got %v", r.Readings)
+		}
+	}
+}
+
+func TestScan_UsesPropertyCropForThresholds(t *testing.T) {
+	frostProp := model.Property{
+		ID:        "prop-frost",
+		Crop:      "tomato",
+		CropStage: model.CropStageHarvest,
+		Latitude:  -22.9,
+		Longitude: -47.06,
+	}
+	lister := &fakePropertyLister{properties: []model.Property{frostProp}}
+	fetcher := &fakeForecastFetcher{
+		readings: []risk.WeatherReading{
+			{Time: time.Now(), TempAvgC: 4, HumidityPct: 60},
+		},
+	}
+
+	results, err := worker.Scan(context.Background(), lister, fetcher, 1)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	got := results[0].Results
+	if len(got) != 1 || got[0].Alert != risk.AlertFrost {
+		t.Errorf("expected frost alert using tomato threshold (5.0C), got %v", got)
 	}
 }
 
