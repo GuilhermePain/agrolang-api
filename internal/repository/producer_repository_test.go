@@ -25,7 +25,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 
-	if _, err := pool.Exec(context.Background(), "TRUNCATE properties, producers CASCADE"); err != nil {
+	if _, err := pool.Exec(context.Background(), "TRUNCATE alerts, properties, producers CASCADE"); err != nil {
 		t.Fatalf("truncate test db: %v", err)
 	}
 
