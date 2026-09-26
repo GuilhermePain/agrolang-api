@@ -15,6 +15,13 @@ type AlertCreator interface {
 	Create(ctx context.Context, a model.Alert) (model.Alert, error)
 }
 
+// AlertChecker guards against duplicate persists and notifications: if an
+// unresolved alert of the same type already exists for the property, the
+// current cycle tick must skip both the DB insert and the WhatsApp message.
+type AlertChecker interface {
+	HasActiveAlert(ctx context.Context, propertyID, alertType string) (bool, error)
+}
+
 type ProducerFinder interface {
 	GetByID(ctx context.Context, id string) (model.Producer, error)
 }
@@ -28,7 +35,13 @@ type Notifier interface {
 // producer over WhatsApp (RF-04.1). A per-property fetch error, a failed
 // persist, or a failed notification is logged and skipped so one bad
 // property never aborts the rest of the cycle.
-func RunCycle(ctx context.Context, lister worker.PropertyLister, fetcher worker.ForecastFetcher, creator AlertCreator, producers ProducerFinder, notif Notifier, concurrency int) error {
+//
+// Deduplication (RF-03.1/RF-04.1): before creating an alert or sending a
+// notification, RunCycle checks whether an unresolved alert of the same type
+// already exists for that property. If one does, both the DB insert and the
+// WhatsApp message are skipped for that tick, preventing log spam and
+// repeated messages to the producer.
+func RunCycle(ctx context.Context, lister worker.PropertyLister, fetcher worker.ForecastFetcher, creator AlertCreator, checker AlertChecker, producers ProducerFinder, notif Notifier, concurrency int) error {
 	results, err := worker.Scan(ctx, lister, fetcher, concurrency)
 	if err != nil {
 		return err
@@ -44,6 +57,15 @@ func RunCycle(ctx context.Context, lister worker.PropertyLister, fetcher worker.
 
 		for _, res := range r.Results {
 			if res.Level != risk.LevelMedium && res.Level != risk.LevelCritical {
+				continue
+			}
+
+			active, err := checker.HasActiveAlert(ctx, r.Property.ID, string(res.Alert))
+			if err != nil {
+				log.Printf("app: check active alert for property %s: %v", r.Property.ID, err)
+				continue
+			}
+			if active {
 				continue
 			}
 
