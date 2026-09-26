@@ -54,6 +54,25 @@ func (r *AlertRepository) ListRecent(ctx context.Context, limit int) ([]model.Al
 	return r.queryAlerts(ctx, query, limit)
 }
 
+// HasActiveAlert reports whether there is already an unresolved alert of the
+// given type for the property. Used by RunCycle to skip duplicate persists and
+// WhatsApp notifications when the same risk condition spans multiple scan ticks.
+func (r *AlertRepository) HasActiveAlert(ctx context.Context, propertyID, alertType string) (bool, error) {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1 FROM alerts
+			WHERE property_id = $1
+			  AND alert_type  = $2
+			  AND resolved_at IS NULL
+		)`
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, query, propertyID, alertType).Scan(&exists); err != nil {
+		return false, fmt.Errorf("repository: has active alert: %w", err)
+	}
+	return exists, nil
+}
+
 func (r *AlertRepository) queryAlerts(ctx context.Context, query string, arg any) ([]model.Alert, error) {
 	rows, err := r.pool.Query(ctx, query, arg)
 	if err != nil {

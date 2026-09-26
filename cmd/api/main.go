@@ -61,7 +61,7 @@ func runScanLoop(ctx context.Context, propertyRepo *repository.PropertyRepositor
 	defer ticker.Stop()
 
 	runOnce := func() {
-		if err := app.RunCycle(ctx, propertyRepo, weatherClient, alertRepo, producerRepo, notifierClient, scanConcurrency); err != nil {
+		if err := app.RunCycle(ctx, propertyRepo, weatherClient, alertRepo, alertRepo, producerRepo, notifierClient, scanConcurrency); err != nil {
 			log.Printf("app: scan cycle failed: %v", err)
 		}
 	}
