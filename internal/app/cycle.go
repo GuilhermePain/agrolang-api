@@ -72,6 +72,10 @@ func notifyProducer(ctx context.Context, producers ProducerFinder, notif Notifie
 		return
 	}
 
+	if !ShouldNotify(res.Level, res.Alert, producer.Concerns) {
+		return
+	}
+
 	message := notifier.BuildMessage(res, periodStart, periodEnd)
 	if err := notif.Notify(ctx, producer.WhatsAppPhone, message); err != nil {
 		log.Printf("app: notify producer %s: %v", producer.ID, err)
