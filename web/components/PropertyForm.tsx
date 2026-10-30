@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { createProperty, listProducers, ApiError, type Producer, type CropStage } from "@/lib/api";
+import { createPropertyAction } from "@/app/actions/data";
+import type { CropStage, Producer } from "@/lib/types";
 import { validateProperty, type PropertyFormValues, type PropertyFormErrors } from "@/lib/validation";
 import { FieldShell, fieldClass } from "./FieldShell";
 
@@ -12,11 +13,13 @@ const CROP_STAGE_OPTIONS: { value: CropStage; label: string }[] = [
   { value: "harvest", label: "Colheita" },
 ];
 
-export default function PropertyForm({ initialProducerId }: { initialProducerId?: string }) {
-  const [producers, setProducers] = useState<Producer[]>([]);
-  const [loadingProducers, setLoadingProducers] = useState(true);
-  const [producersError, setProducersError] = useState<string | null>(null);
-
+export default function PropertyForm({
+  initialProducerId,
+  producers,
+}: {
+  initialProducerId?: string;
+  producers: Producer[];
+}) {
   const [values, setValues] = useState<PropertyFormValues>({
     producer_id: initialProducerId ?? "",
     latitude: "",
@@ -29,13 +32,6 @@ export default function PropertyForm({ initialProducerId }: { initialProducerId?
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
-
-  useEffect(() => {
-    listProducers()
-      .then(setProducers)
-      .catch(() => setProducersError("Não foi possível carregar os produtores."))
-      .finally(() => setLoadingProducers(false));
-  }, []);
 
   function update<K extends keyof PropertyFormValues>(key: K, value: PropertyFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -50,7 +46,7 @@ export default function PropertyForm({ initialProducerId }: { initialProducerId?
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const property = await createProperty({
+      const result = await createPropertyAction({
         producer_id: values.producer_id,
         latitude: Number(values.latitude),
         longitude: Number(values.longitude),
@@ -58,11 +54,10 @@ export default function PropertyForm({ initialProducerId }: { initialProducerId?
         soil_type: values.soil_type,
         crop_stage: values.crop_stage as CropStage,
       });
-      setCreated(property.id);
-    } catch (err) {
-      setSubmitError(
-        err instanceof ApiError ? err.message : "Não foi possível cadastrar a propriedade."
-      );
+      if (result.ok) setCreated(result.data.id);
+      else setSubmitError(result.error);
+    } catch {
+      setSubmitError("Não foi possível cadastrar a propriedade.");
     } finally {
       setSubmitting(false);
     }
@@ -98,26 +93,15 @@ export default function PropertyForm({ initialProducerId }: { initialProducerId?
           className={fieldClass}
           value={values.producer_id}
           onChange={(e) => update("producer_id", e.target.value)}
-          disabled={loadingProducers}
         >
-          <option value="">
-            {loadingProducers ? "Carregando..." : "Selecione um produtor"}
-          </option>
+          <option value="">Selecione um produtor</option>
           {producers.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} &middot; {p.city}/{p.state}
             </option>
           ))}
         </select>
-        {producersError && (
-          <p className="font-mono text-xs text-risk-critical">
-            {producersError}{" "}
-            <Link href="/producers/new" className="underline">
-              Cadastrar produtor
-            </Link>
-          </p>
-        )}
-        {!loadingProducers && !producersError && producers.length === 0 && (
+        {producers.length === 0 && (
           <p className="font-mono text-xs text-ink-soft">
             Nenhum produtor cadastrado ainda.{" "}
             <Link href="/producers/new" className="underline text-accent">

@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { createProducer, ApiError } from "@/lib/api";
+import { createProducerAction } from "@/app/actions/data";
 import { validateProducer, type ProducerFormValues, type ProducerFormErrors } from "@/lib/validation";
 import { FieldShell, fieldClass } from "./FieldShell";
 
@@ -28,12 +28,11 @@ export default function ProducerForm() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const created = await createProducer(values);
-      setCreatedId(created.id);
-    } catch (err) {
-      setSubmitError(
-        err instanceof ApiError ? err.message : "Não foi possível cadastrar o produtor."
-      );
+      const result = await createProducerAction(values);
+      if (result.ok) setCreatedId(result.data.id);
+      else setSubmitError(result.error);
+    } catch {
+      setSubmitError("Não foi possível cadastrar o produtor.");
     } finally {
       setSubmitting(false);
     }

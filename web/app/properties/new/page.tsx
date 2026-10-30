@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PropertyForm from "@/components/PropertyForm";
+import { listProducers } from "@/lib/api";
 
 export default async function NewPropertyPage({
   searchParams,
@@ -7,6 +8,7 @@ export default async function NewPropertyPage({
   searchParams: Promise<{ producer_id?: string }>;
 }) {
   const { producer_id } = await searchParams;
+  const producers = await listProducers();
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 p-5 sm:p-8">
@@ -23,7 +25,7 @@ export default async function NewPropertyPage({
         <h1 className="font-display text-2xl italic text-ink">Cadastrar propriedade</h1>
       </div>
 
-      <PropertyForm initialProducerId={producer_id} />
+      <PropertyForm initialProducerId={producer_id} producers={producers} />
     </div>
   );
 }
