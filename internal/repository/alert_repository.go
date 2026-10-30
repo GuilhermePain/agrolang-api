@@ -77,3 +77,36 @@ func (r *AlertRepository) queryAlerts(ctx context.Context, query string, arg any
 	}
 	return all, nil
 }
+
+func (r *AlertRepository) ListRecentForUser(ctx context.Context, userID string, limit int) ([]model.Alert, error) {
+	const query = `
+		SELECT a.id, a.property_id, a.level, a.alert_type, a.period_start, a.period_end, a.triggered_at, a.resolved_at
+		FROM alerts a
+		JOIN properties p ON p.id = a.property_id
+		JOIN producers pr ON pr.id = p.producer_id
+		WHERE pr.user_id = $1
+		ORDER BY a.triggered_at DESC
+		LIMIT $2`
+
+	rows, err := r.pool.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("repository: query alerts for user: %w", err)
+	}
+	defer rows.Close()
+
+	all := make([]model.Alert, 0)
+	for rows.Next() {
+		var a model.Alert
+		if err := rows.Scan(
+			&a.ID, &a.PropertyID, &a.Level, &a.AlertType,
+			&a.PeriodStart, &a.PeriodEnd, &a.TriggeredAt, &a.ResolvedAt,
+		); err != nil {
+			return nil, fmt.Errorf("repository: scan alert: %w", err)
+		}
+		all = append(all, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repository: iterate alerts: %w", err)
+	}
+	return all, nil
+}
