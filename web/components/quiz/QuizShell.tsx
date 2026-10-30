@@ -41,6 +41,7 @@ export default function QuizShell({
         </div>
         <div
           role="progressbar"
+          aria-label="Progresso do cadastro"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress)}

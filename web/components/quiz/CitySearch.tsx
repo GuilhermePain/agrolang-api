@@ -21,6 +21,9 @@ export default function CitySearch({
     const q = query.trim();
     if (picked || q.length < 2) {
       requestId.current += 1; // drop any in-flight answer
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results when the search is no longer active
+      setResults([]);
+      setStatus("idle");
       return;
     }
 

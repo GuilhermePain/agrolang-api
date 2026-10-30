@@ -52,6 +52,7 @@ export default function CropStep({
         Em que fase está?
       </p>
       <ChoiceList
+        label="Fase do plantio"
         options={STAGE_OPTIONS}
         value={answers.crop_stage}
         onChange={(crop_stage) => onChange({ crop_stage })}

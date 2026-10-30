@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -47,6 +47,17 @@ export default function QuizFlow() {
   const [answers, dispatch] = useReducer(quizReducer, initialAnswers);
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const advanceTimer = useRef<number | null>(null);
+
+  function clearAdvanceTimer() {
+    if (advanceTimer.current !== null) {
+      window.clearTimeout(advanceTimer.current);
+      advanceTimer.current = null;
+    }
+  }
+
+  // Drop a pending auto-advance if the quiz unmounts.
+  useEffect(() => clearAdvanceTimer, []);
 
   // Restore saved answers once in the browser; storage is never read during render.
   useEffect(() => {
@@ -81,6 +92,7 @@ export default function QuizFlow() {
   const patch = (p: Partial<QuizAnswers>) => dispatch({ type: "patch", patch: p });
 
   function goTo(i: number) {
+    clearAdvanceTimer();
     setError(null);
     router.push(`/cadastro?passo=${i + 1}`);
   }
@@ -98,7 +110,8 @@ export default function QuizFlow() {
   function pick(p: Partial<QuizAnswers>) {
     patch(p);
     setError(null);
-    window.setTimeout(() => goTo(index + 1), 180);
+    clearAdvanceTimer();
+    advanceTimer.current = window.setTimeout(() => goTo(index + 1), 180);
   }
 
   function renderStep(): ReactNode {
@@ -106,6 +119,7 @@ export default function QuizFlow() {
       case "style":
         return (
           <ChoiceList
+            label={title}
             options={STYLE_OPTIONS}
             value={answers.work_style}
             onChange={(work_style) => pick({ work_style })}
@@ -114,6 +128,7 @@ export default function QuizFlow() {
       case "areas":
         return (
           <ChoiceList
+            label={title}
             options={AREAS_OPTIONS}
             value={answers.areas_bucket}
             onChange={(areas_bucket) => pick({ areas_bucket })}
@@ -122,6 +137,7 @@ export default function QuizFlow() {
       case "producers":
         return (
           <ChoiceList
+            label={title}
             options={PRODUCERS_OPTIONS}
             value={answers.producers_bucket}
             onChange={(producers_bucket) => pick({ producers_bucket })}
@@ -130,6 +146,7 @@ export default function QuizFlow() {
       case "soil":
         return (
           <ChoiceList
+            label={title}
             options={SOIL_OPTIONS}
             value={answers.soil_type}
             onChange={(soil_type) => pick({ soil_type })}
@@ -144,6 +161,7 @@ export default function QuizFlow() {
       case "concerns":
         return (
           <MultiChoiceList
+            label={title}
             options={CONCERN_OPTIONS}
             values={answers.concerns}
             onChange={(concerns) => patch({ concerns })}

@@ -16,13 +16,15 @@ export function ChoiceList<T extends string>({
   options,
   value,
   onChange,
+  label,
 }: {
   options: Option<T>[];
   value: T | null;
   onChange: (value: T) => void;
+  label?: string;
 }) {
   return (
-    <div role="radiogroup" className="flex flex-col gap-3">
+    <div role="radiogroup" aria-label={label} className="flex flex-col gap-3">
       {options.map((o) => {
         const selected = o.value === value;
         return (
@@ -46,17 +48,19 @@ export function MultiChoiceList<T extends string>({
   options,
   values,
   onChange,
+  label,
 }: {
   options: Option<T>[];
   values: T[];
   onChange: (values: T[]) => void;
+  label?: string;
 }) {
   function toggle(value: T) {
     onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
   }
 
   return (
-    <div role="group" className="flex flex-col gap-3">
+    <div role="group" aria-label={label} className="flex flex-col gap-3">
       {options.map((o) => {
         const selected = values.includes(o.value);
         return (
