@@ -39,7 +39,7 @@ type fakeAuthStore struct {
 	purged         bool
 }
 
-func (f *fakeAuthStore) GetUserByEmail(ctx context.Context, email string) (model.User, error) {
+func (f *fakeAuthStore) GetByEmail(ctx context.Context, email string) (model.User, error) {
 	u, ok := f.users[email]
 	if !ok {
 		return model.User{}, repository.ErrNotFound

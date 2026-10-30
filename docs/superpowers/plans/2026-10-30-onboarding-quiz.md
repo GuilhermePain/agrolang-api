@@ -1607,7 +1607,7 @@ type fakeAuthStore struct {
 	purged         bool
 }
 
-func (f *fakeAuthStore) GetUserByEmail(ctx context.Context, email string) (model.User, error) {
+func (f *fakeAuthStore) GetByEmail(ctx context.Context, email string) (model.User, error) {
 	u, ok := f.users[email]
 	if !ok {
 		return model.User{}, repository.ErrNotFound
@@ -2078,7 +2078,7 @@ type Signuper interface {
 }
 
 type AuthStore interface {
-	GetUserByEmail(ctx context.Context, email string) (model.User, error)
+	GetByEmail(ctx context.Context, email string) (model.User, error)
 	CreateSession(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
 	DeleteSession(ctx context.Context, tokenHash string) error
 	DeleteExpiredSessions(ctx context.Context) error
@@ -2194,7 +2194,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.store.GetUserByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
+	user, err := h.store.GetByEmail(r.Context(), strings.ToLower(strings.TrimSpace(req.Email)))
 	found := err == nil
 	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		log.Printf("handler: login lookup: %v", err)
