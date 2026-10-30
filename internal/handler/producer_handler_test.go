@@ -14,23 +14,28 @@ import (
 )
 
 type fakeProducerStore struct {
-	created   model.Producer
-	byID      map[string]model.Producer
-	all       []model.Producer
-	createErr error
-	listErr   error
+	created     model.Producer
+	createdFor  string
+	lookedUpFor string
+	listedFor   string
+	byID        map[string]model.Producer
+	all         []model.Producer
+	createErr   error
+	listErr     error
 }
 
-func (f *fakeProducerStore) Create(ctx context.Context, p model.Producer) (model.Producer, error) {
+func (f *fakeProducerStore) CreateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error) {
 	if f.createErr != nil {
 		return model.Producer{}, f.createErr
 	}
 	p.ID = "generated-id"
 	f.created = p
+	f.createdFor = userID
 	return p, nil
 }
 
-func (f *fakeProducerStore) GetByID(ctx context.Context, id string) (model.Producer, error) {
+func (f *fakeProducerStore) GetByIDForUser(ctx context.Context, id, userID string) (model.Producer, error) {
+	f.lookedUpFor = userID
 	p, ok := f.byID[id]
 	if !ok {
 		return model.Producer{}, repository.ErrNotFound
@@ -38,21 +43,26 @@ func (f *fakeProducerStore) GetByID(ctx context.Context, id string) (model.Produ
 	return p, nil
 }
 
-func (f *fakeProducerStore) ListAll(ctx context.Context) ([]model.Producer, error) {
+func (f *fakeProducerStore) ListByUser(ctx context.Context, userID string) ([]model.Producer, error) {
+	f.listedFor = userID
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
 	return f.all, nil
 }
 
-func TestProducerHandler_Create_ReturnsCreatedProducer(t *testing.T) {
-	store := &fakeProducerStore{}
-	h := handler.NewProducerHandler(store)
+func newProducerMux(store *fakeProducerStore) *http.ServeMux {
 	mux := http.NewServeMux()
-	h.Register(mux)
+	handler.NewProducerHandler(store).Register(mux)
+	return mux
+}
+
+func TestProducerHandler_Create_ReturnsCreatedProducerOwnedByUser(t *testing.T) {
+	store := &fakeProducerStore{}
+	mux := newProducerMux(store)
 
 	body := `{"name":"Joao","whatsapp_phone":"5511999999999","city":"Campinas","state":"SP"}`
-	req := httptest.NewRequest(http.MethodPost, "/producers", bytes.NewBufferString(body))
+	req := authed(httptest.NewRequest(http.MethodPost, "/producers", bytes.NewBufferString(body)))
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -60,38 +70,27 @@ func TestProducerHandler_Create_ReturnsCreatedProducer(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
-
 	var got model.Producer
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.ID != "generated-id" {
-		t.Errorf("expected ID generated-id, got %q", got.ID)
+	if got.ID != "generated-id" || got.Name != "Joao" || got.WhatsAppPhone != "5511999999999" {
+		t.Errorf("unexpected producer: %+v", got)
 	}
-	if got.Name != "Joao" {
-		t.Errorf("expected Name Joao, got %q", got.Name)
+	if store.createdFor != testUserID {
+		t.Errorf("expected producer created for %q, got %q", testUserID, store.createdFor)
 	}
-	if got.WhatsAppPhone != "5511999999999" {
-		t.Errorf("expected WhatsAppPhone 5511999999999, got %q", got.WhatsAppPhone)
-	}
-
-	rawBody := rec.Body.String()
-	if !bytes.Contains([]byte(rawBody), []byte(`"whatsapp_phone":"5511999999999"`)) {
-		t.Errorf("expected response JSON to use snake_case whatsapp_phone key, got %s", rawBody)
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"whatsapp_phone":"5511999999999"`)) {
+		t.Errorf("expected snake_case whatsapp_phone key, got %s", rec.Body.String())
 	}
 }
 
-func TestProducerHandler_GetByID_ReturnsProducer(t *testing.T) {
-	store := &fakeProducerStore{byID: map[string]model.Producer{
-		"prod-1": {ID: "prod-1", Name: "Maria"},
-	}}
-	h := handler.NewProducerHandler(store)
-	mux := http.NewServeMux()
-	h.Register(mux)
+func TestProducerHandler_GetByID_ReturnsProducerScopedToUser(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{"prod-1": {ID: "prod-1", Name: "Maria"}}}
+	mux := newProducerMux(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/producers/prod-1", nil)
+	req := authed(httptest.NewRequest(http.MethodGet, "/producers/prod-1", nil))
 	rec := httptest.NewRecorder()
-
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -104,17 +103,16 @@ func TestProducerHandler_GetByID_ReturnsProducer(t *testing.T) {
 	if got.Name != "Maria" {
 		t.Errorf("expected Name Maria, got %q", got.Name)
 	}
+	if store.lookedUpFor != testUserID {
+		t.Errorf("expected lookup scoped to %q, got %q", testUserID, store.lookedUpFor)
+	}
 }
 
 func TestProducerHandler_GetByID_NotFound_Returns404(t *testing.T) {
-	store := &fakeProducerStore{byID: map[string]model.Producer{}}
-	h := handler.NewProducerHandler(store)
-	mux := http.NewServeMux()
-	h.Register(mux)
+	mux := newProducerMux(&fakeProducerStore{byID: map[string]model.Producer{}})
 
-	req := httptest.NewRequest(http.MethodGet, "/producers/missing", nil)
+	req := authed(httptest.NewRequest(http.MethodGet, "/producers/missing", nil))
 	rec := httptest.NewRecorder()
-
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
@@ -122,18 +120,12 @@ func TestProducerHandler_GetByID_NotFound_Returns404(t *testing.T) {
 	}
 }
 
-func TestProducerHandler_List_ReturnsAllProducers(t *testing.T) {
-	store := &fakeProducerStore{all: []model.Producer{
-		{ID: "prod-1", Name: "Maria"},
-		{ID: "prod-2", Name: "Joao"},
-	}}
-	h := handler.NewProducerHandler(store)
-	mux := http.NewServeMux()
-	h.Register(mux)
+func TestProducerHandler_List_ReturnsUsersProducers(t *testing.T) {
+	store := &fakeProducerStore{all: []model.Producer{{ID: "prod-1", Name: "Maria"}, {ID: "prod-2", Name: "Joao"}}}
+	mux := newProducerMux(store)
 
-	req := httptest.NewRequest(http.MethodGet, "/producers", nil)
+	req := authed(httptest.NewRequest(http.MethodGet, "/producers", nil))
 	rec := httptest.NewRecorder()
-
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -146,20 +138,35 @@ func TestProducerHandler_List_ReturnsAllProducers(t *testing.T) {
 	if len(got) != 2 {
 		t.Errorf("expected 2 producers, got %d", len(got))
 	}
+	if store.listedFor != testUserID {
+		t.Errorf("expected list scoped to %q, got %q", testUserID, store.listedFor)
+	}
 }
 
 func TestProducerHandler_Create_InvalidJSON_Returns400(t *testing.T) {
-	store := &fakeProducerStore{}
-	h := handler.NewProducerHandler(store)
-	mux := http.NewServeMux()
-	h.Register(mux)
+	mux := newProducerMux(&fakeProducerStore{})
 
-	req := httptest.NewRequest(http.MethodPost, "/producers", bytes.NewBufferString("not json"))
+	req := authed(httptest.NewRequest(http.MethodPost, "/producers", bytes.NewBufferString("not json")))
 	rec := httptest.NewRecorder()
-
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProducerHandler_WithoutUser_Returns401(t *testing.T) {
+	mux := newProducerMux(&fakeProducerStore{})
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/producers"},
+		{http.MethodGet, "/producers/prod-1"},
+		{http.MethodPost, "/producers"},
+	} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString("{}")))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: expected 401, got %d", tc.method, tc.path, rec.Code)
+		}
 	}
 }

@@ -11,9 +11,9 @@ import (
 )
 
 type ProducerStore interface {
-	Create(ctx context.Context, p model.Producer) (model.Producer, error)
-	GetByID(ctx context.Context, id string) (model.Producer, error)
-	ListAll(ctx context.Context) ([]model.Producer, error)
+	CreateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error)
+	GetByIDForUser(ctx context.Context, id, userID string) (model.Producer, error)
+	ListByUser(ctx context.Context, userID string) ([]model.Producer, error)
 }
 
 type ProducerHandler struct {
@@ -31,13 +31,18 @@ func (h *ProducerHandler) Register(mux *http.ServeMux) {
 }
 
 func (h *ProducerHandler) create(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+
 	var p model.Producer
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	created, err := h.store.Create(r.Context(), p)
+	created, err := h.store.CreateForUser(r.Context(), user.ID, p)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create producer")
 		return
@@ -47,7 +52,12 @@ func (h *ProducerHandler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProducerHandler) list(w http.ResponseWriter, r *http.Request) {
-	producers, err := h.store.ListAll(r.Context())
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	producers, err := h.store.ListByUser(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list producers")
 		return
@@ -57,9 +67,12 @@ func (h *ProducerHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProducerHandler) getByID(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
 
-	p, err := h.store.GetByID(r.Context(), id)
+	p, err := h.store.GetByIDForUser(r.Context(), r.PathValue("id"), user.ID)
 	if errors.Is(err, repository.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "producer not found")
 		return

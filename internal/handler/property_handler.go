@@ -13,9 +13,9 @@ import (
 )
 
 type PropertyStore interface {
-	Create(ctx context.Context, p model.Property) (model.Property, error)
-	GetByID(ctx context.Context, id string) (model.Property, error)
-	ListAll(ctx context.Context) ([]model.Property, error)
+	CreateForUser(ctx context.Context, userID string, p model.Property) (model.Property, error)
+	GetByIDForUser(ctx context.Context, id, userID string) (model.Property, error)
+	ListByUser(ctx context.Context, userID string) ([]model.Property, error)
 }
 
 type PropertyAlertLister interface {
@@ -45,13 +45,22 @@ func (h *PropertyHandler) Register(mux *http.ServeMux) {
 }
 
 func (h *PropertyHandler) create(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+
 	var p model.Property
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	created, err := h.store.Create(r.Context(), p)
+	created, err := h.store.CreateForUser(r.Context(), user.ID, p)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "producer not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create property")
 		return
@@ -60,24 +69,41 @@ func (h *PropertyHandler) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
-func (h *PropertyHandler) getByID(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+// ownedProperty loads the property only if it belongs to the user, writing
+// the 404/500 response itself when it can't.
+func (h *PropertyHandler) ownedProperty(w http.ResponseWriter, r *http.Request) (model.Property, bool) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return model.Property{}, false
+	}
 
-	p, err := h.store.GetByID(r.Context(), id)
+	p, err := h.store.GetByIDForUser(r.Context(), r.PathValue("id"), user.ID)
 	if errors.Is(err, repository.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "property not found")
-		return
+		return model.Property{}, false
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to get property")
+		return model.Property{}, false
+	}
+	return p, true
+}
+
+func (h *PropertyHandler) getByID(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.ownedProperty(w, r)
+	if !ok {
 		return
 	}
-
 	writeJSON(w, http.StatusOK, p)
 }
 
 func (h *PropertyHandler) list(w http.ResponseWriter, r *http.Request) {
-	properties, err := h.store.ListAll(r.Context())
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	properties, err := h.store.ListByUser(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list properties")
 		return
@@ -87,9 +113,12 @@ func (h *PropertyHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PropertyHandler) listAlerts(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	p, ok := h.ownedProperty(w, r)
+	if !ok {
+		return
+	}
 
-	alerts, err := h.alerts.ListByProperty(r.Context(), id)
+	alerts, err := h.alerts.ListByProperty(r.Context(), p.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list alerts")
 		return
@@ -99,15 +128,8 @@ func (h *PropertyHandler) listAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PropertyHandler) forecastFor(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-
-	p, err := h.store.GetByID(r.Context(), id)
-	if errors.Is(err, repository.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "property not found")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get property")
+	p, ok := h.ownedProperty(w, r)
+	if !ok {
 		return
 	}
 

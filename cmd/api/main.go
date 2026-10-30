@@ -34,24 +34,33 @@ func main() {
 	propertyRepo := repository.NewPropertyRepository(pool)
 	alertRepo := repository.NewAlertRepository(pool)
 	producerRepo := repository.NewProducerRepository(pool)
+	userRepo := repository.NewUserRepository(pool)
+	signupRepo := repository.NewSignupRepository(pool)
 	weatherClient := weather.NewOpenMeteoClient(weather.WithBaseURL(cfg.OpenMeteoBaseURL))
 	notifierClient := notifier.NewClient(cfg.EvolutionAPIURL, cfg.EvolutionAPIKey)
 
 	go runScanLoop(ctx, propertyRepo, weatherClient, alertRepo, producerRepo, notifierClient, cfg.ScanInterval)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	root := http.NewServeMux()
+	root.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	handler.NewProducerHandler(producerRepo).Register(mux)
-	handler.NewPropertyHandler(propertyRepo, alertRepo, weatherClient).Register(mux)
-	handler.NewAlertHandler(alertRepo).Register(mux)
+	authHandler := handler.NewAuthHandler(signupRepo, userRepo)
+	authHandler.RegisterPublic(root)
+
+	// Everything else requires a live session.
+	protected := http.NewServeMux()
+	authHandler.RegisterProtected(protected)
+	handler.NewProducerHandler(producerRepo).Register(protected)
+	handler.NewPropertyHandler(propertyRepo, alertRepo, weatherClient).Register(protected)
+	handler.NewAlertHandler(alertRepo).Register(protected)
+	root.Handle("/", handler.RequireSession(userRepo)(protected))
 
 	addr := ":" + cfg.HTTPPort
 	log.Printf("agrolang-api listening on %s", addr)
-	if err := http.ListenAndServe(addr, handler.WithCORS(mux)); err != nil {
+	if err := http.ListenAndServe(addr, handler.WithCORS(root)); err != nil {
 		log.Fatal(err)
 	}
 }

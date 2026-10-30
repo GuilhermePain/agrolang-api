@@ -10,7 +10,7 @@ import (
 const defaultRecentAlertsLimit = 50
 
 type RecentAlertLister interface {
-	ListRecent(ctx context.Context, limit int) ([]model.Alert, error)
+	ListRecentForUser(ctx context.Context, userID string, limit int) ([]model.Alert, error)
 }
 
 type AlertHandler struct {
@@ -26,7 +26,12 @@ func (h *AlertHandler) Register(mux *http.ServeMux) {
 }
 
 func (h *AlertHandler) list(w http.ResponseWriter, r *http.Request) {
-	alerts, err := h.store.ListRecent(r.Context(), defaultRecentAlertsLimit)
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	alerts, err := h.store.ListRecentForUser(r.Context(), user.ID, defaultRecentAlertsLimit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list alerts")
 		return
