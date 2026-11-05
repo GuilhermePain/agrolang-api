@@ -55,8 +55,7 @@ func (r *AlertRepository) ListRecent(ctx context.Context, limit int) ([]model.Al
 }
 
 // HasActiveAlert reports whether there is already an unresolved alert of the
-// given type for the property. Used by RunCycle to skip duplicate persists and
-// WhatsApp notifications when the same risk condition spans multiple scan ticks.
+// given type for the property.
 func (r *AlertRepository) HasActiveAlert(ctx context.Context, propertyID, alertType string) (bool, error) {
 	const query = `
 		SELECT EXISTS (
@@ -71,6 +70,43 @@ func (r *AlertRepository) HasActiveAlert(ctx context.Context, propertyID, alertT
 		return false, fmt.Errorf("repository: has active alert: %w", err)
 	}
 	return exists, nil
+}
+
+// Resolve marks a single alert as resolved.
+func (r *AlertRepository) Resolve(ctx context.Context, id string) error {
+	const query = `
+		UPDATE alerts
+		SET resolved_at = now()
+		WHERE id = $1 AND resolved_at IS NULL`
+
+	res, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("repository: resolve alert: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ResolveInactiveForProperty resolves unresolved alerts of types that are no longer
+// detected as active in the latest scan cycle.
+func (r *AlertRepository) ResolveInactiveForProperty(ctx context.Context, propertyID string, activeAlertTypes []string) error {
+	var query string
+	var args []any
+
+	if len(activeAlertTypes) == 0 {
+		query = `UPDATE alerts SET resolved_at = now() WHERE property_id = $1 AND resolved_at IS NULL`
+		args = []any{propertyID}
+	} else {
+		query = `UPDATE alerts SET resolved_at = now() WHERE property_id = $1 AND resolved_at IS NULL AND alert_type != ALL($2)`
+		args = []any{propertyID, activeAlertTypes}
+	}
+
+	if _, err := r.pool.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("repository: auto resolve inactive alerts: %w", err)
+	}
+	return nil
 }
 
 func (r *AlertRepository) queryAlerts(ctx context.Context, query string, arg any) ([]model.Alert, error) {

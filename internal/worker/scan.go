@@ -51,6 +51,7 @@ func Scan(ctx context.Context, lister PropertyLister, fetcher ForecastFetcher, c
 			riskProperty := risk.Property{
 				Crop:      risk.Crop(strings.ToLower(p.Crop)),
 				CropStage: risk.CropStage(p.CropStage),
+				SoilType:  risk.SoilType(strings.ToLower(p.SoilType)),
 			}
 			result := risk.EvaluateAll(riskProperty, readings)
 			results[i] = ScanResult{Property: p, Results: result, Readings: readings}

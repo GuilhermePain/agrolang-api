@@ -40,6 +40,11 @@ export type WeatherReading = {
   temp_avg_c: number;
   humidity_pct: number;
   precipitation_mm: number;
+  cloud_cover_pct?: number;
+  wind_speed_kmh?: number;
+  weather_code?: number;
+  apparent_temp_c?: number;
+  rain_prob_pct?: number;
 };
 
 export type CropStage = "germination" | "flowering" | "harvest";
@@ -60,6 +65,22 @@ export type NewProperty = {
   crop_stage: CropStage;
 };
 
+export type NotificationStatus = "sent" | "delivered" | "read" | "failed";
+
+export type NotificationLog = {
+  id: string;
+  alert_id?: string;
+  producer_id: string;
+  property_id?: string;
+  phone: string;
+  message: string;
+  status: NotificationStatus;
+  sent_at: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  error_message?: string | null;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -78,20 +99,28 @@ async function apiFetch<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function apiPost<TBody, TResult>(path: string, body: TBody): Promise<TResult> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
+async function apiMutate<TBody, TResult>(
+  path: string,
+  method: "POST" | "PUT" | "DELETE",
+  body?: TBody
+): Promise<TResult> {
+  const options: RequestInit = {
+    method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
     cache: "no-store",
-  });
+  };
+  if (body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(`${API_URL}${path}`, options);
   if (!res.ok) {
     let message = `API ${path} failed: ${res.status}`;
     try {
       const payload = (await res.json()) as { error?: string };
       if (payload.error) message = payload.error;
     } catch {
-      // response body wasn't JSON; keep the generic message
+      // response body wasn't JSON; keep generic
     }
     throw new ApiError(message, res.status);
   }
@@ -102,16 +131,44 @@ export function listProperties(): Promise<Property[]> {
   return apiFetch<Property[]>("/properties");
 }
 
+export function getProperty(id: string): Promise<Property> {
+  return apiFetch<Property>(`/properties/${id}`);
+}
+
+export function createProperty(property: NewProperty): Promise<Property> {
+  return apiMutate<NewProperty, Property>("/properties", "POST", property);
+}
+
+export function updateProperty(id: string, property: NewProperty): Promise<Property> {
+  return apiMutate<NewProperty, Property>(`/properties/${id}`, "PUT", property);
+}
+
+export function deleteProperty(id: string): Promise<{ status: string; id: string }> {
+  return apiMutate<undefined, { status: string; id: string }>(`/properties/${id}`, "DELETE");
+}
+
 export function listProducers(): Promise<Producer[]> {
   return apiFetch<Producer[]>("/producers");
 }
 
-export function createProducer(producer: NewProducer): Promise<Producer> {
-  return apiPost<NewProducer, Producer>("/producers", producer);
+export function getProducer(id: string): Promise<Producer> {
+  return apiFetch<Producer>(`/producers/${id}`);
 }
 
-export function createProperty(property: NewProperty): Promise<Property> {
-  return apiPost<NewProperty, Property>("/properties", property);
+export function createProducer(producer: NewProducer): Promise<Producer> {
+  return apiMutate<NewProducer, Producer>("/producers", "POST", producer);
+}
+
+export function updateProducer(id: string, producer: NewProducer): Promise<Producer> {
+  return apiMutate<NewProducer, Producer>(`/producers/${id}`, "PUT", producer);
+}
+
+export function deleteProducer(id: string): Promise<{ status: string; id: string }> {
+  return apiMutate<undefined, { status: string; id: string }>(`/producers/${id}`, "DELETE");
+}
+
+export function listProducerProperties(producerId: string): Promise<Property[]> {
+  return apiFetch<Property[]>(`/producers/${producerId}/properties`);
 }
 
 export function getPropertyAlerts(propertyId: string): Promise<Alert[]> {
@@ -124,4 +181,24 @@ export function getPropertyForecast(propertyId: string): Promise<WeatherReading[
 
 export function listRecentAlerts(): Promise<Alert[]> {
   return apiFetch<Alert[]>("/alerts");
+}
+
+export function resolveAlert(alertId: string): Promise<{ status: string; id: string }> {
+  return apiMutate<Record<string, never>, { status: string; id: string }>(
+    `/alerts/${alertId}/resolve`,
+    "POST",
+    {}
+  );
+}
+
+export function triggerScan(): Promise<{ status: string }> {
+  return apiMutate<Record<string, never>, { status: string }>("/scan/run", "POST", {});
+}
+
+export function listRecentNotifications(): Promise<NotificationLog[]> {
+  return apiFetch<NotificationLog[]>("/notifications");
+}
+
+export function listProducerNotifications(producerId: string): Promise<NotificationLog[]> {
+  return apiFetch<NotificationLog[]>(`/producers/${producerId}/notifications`);
 }

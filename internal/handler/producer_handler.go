@@ -14,6 +14,8 @@ type ProducerStore interface {
 	Create(ctx context.Context, p model.Producer) (model.Producer, error)
 	GetByID(ctx context.Context, id string) (model.Producer, error)
 	ListAll(ctx context.Context) ([]model.Producer, error)
+	Update(ctx context.Context, p model.Producer) (model.Producer, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type ProducerHandler struct {
@@ -28,6 +30,8 @@ func (h *ProducerHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /producers", h.create)
 	mux.HandleFunc("GET /producers", h.list)
 	mux.HandleFunc("GET /producers/{id}", h.getByID)
+	mux.HandleFunc("PUT /producers/{id}", h.update)
+	mux.HandleFunc("DELETE /producers/{id}", h.delete)
 }
 
 func (h *ProducerHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -70,4 +74,43 @@ func (h *ProducerHandler) getByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, p)
+}
+
+func (h *ProducerHandler) update(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	var p model.Producer
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	p.ID = id
+
+	updated, err := h.store.Update(r.Context(), p)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "producer not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update producer")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (h *ProducerHandler) delete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	err := h.store.Delete(r.Context(), id)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "producer not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete producer")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }

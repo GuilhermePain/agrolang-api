@@ -1,6 +1,9 @@
 package risk
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type CropStage string
 
@@ -8,6 +11,16 @@ const (
 	StageGermination CropStage = "germination"
 	StageFlowering   CropStage = "flowering"
 	StageHarvest     CropStage = "harvest"
+)
+
+type SoilType string
+
+const (
+	SoilSandy     SoilType = "arenoso"
+	SoilClay      SoilType = "argiloso"
+	SoilMedium    SoilType = "medio"
+	SoilShallow   SoilType = "raso"       // Neossolos litólicos / Vertissolos do semiárido
+	SoilAlluvial  SoilType = "aluvial"    // Várzeas e solos aluviais
 )
 
 type Level string
@@ -31,32 +44,48 @@ const (
 type Crop string
 
 const (
-	CropCorn    Crop = "corn"
-	CropTomato  Crop = "tomato"
-	CropCoffee  Crop = "coffee"
-	CropDefault Crop = "default"
+	CropCorn      Crop = "milho"
+	CropCornEn    Crop = "corn"
+	CropTomato    Crop = "tomate"
+	CropTomatoEn  Crop = "tomato"
+	CropCoffee    Crop = "cafe"
+	CropCoffeeEn  Crop = "coffee"
+	CropBean      Crop = "feijao"        // Feijão comum e feijão-caupi (Nordeste/Ceará)
+	CropCassava   Crop = "mandioca"      // Mandioca / Macaxeira
+	CropCashew    Crop = "caju"          // Cajueiro (símbolo do Ceará)
+	CropSoy       Crop = "soja"          // Soja
+	CropCotton    Crop = "algodao"       // Algodão
+	CropFruit     Crop = "fruticultura"  // Melão, Melancia, Manga irrigada (Vale do Jaguaribe/CE)
+	CropDefault   Crop = "default"
 )
 
-// CropThresholds holds the per-crop limits that decide when a weather
-// condition becomes a risk alert. Zero-valued fields fall back to
-// defaultThresholds[CropDefault] via thresholdsFor.
 type CropThresholds struct {
-	FrostTempLimitC     float64
-	HeatMediumTempC     float64
-	HeatCriticalTempC   float64
-	RainMediumMM24h     float64
-	RainCriticalMM24h   float64
+	FrostTempLimitC   float64
+	HeatMediumTempC   float64
+	HeatCriticalTempC float64
+	RainMediumMM24h   float64
+	RainCriticalMM24h float64
 }
 
 var defaultThresholds = map[Crop]CropThresholds{
-	CropDefault: {FrostTempLimitC: 3.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 40.0, RainMediumMM24h: 30.0, RainCriticalMM24h: 60.0},
-	CropCorn:    {FrostTempLimitC: 3.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 40.0, RainMediumMM24h: 30.0, RainCriticalMM24h: 60.0},
-	CropTomato:  {FrostTempLimitC: 5.0, HeatMediumTempC: 35.0, HeatCriticalTempC: 38.0, RainMediumMM24h: 25.0, RainCriticalMM24h: 50.0},
-	CropCoffee:  {FrostTempLimitC: 5.0, HeatMediumTempC: 34.0, HeatCriticalTempC: 37.0, RainMediumMM24h: 40.0, RainCriticalMM24h: 70.0},
+	CropDefault:     {FrostTempLimitC: 3.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 40.0, RainMediumMM24h: 30.0, RainCriticalMM24h: 60.0},
+	CropCorn:        {FrostTempLimitC: 3.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 40.0, RainMediumMM24h: 30.0, RainCriticalMM24h: 60.0},
+	CropCornEn:      {FrostTempLimitC: 3.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 40.0, RainMediumMM24h: 30.0, RainCriticalMM24h: 60.0},
+	CropTomato:      {FrostTempLimitC: 5.0, HeatMediumTempC: 35.0, HeatCriticalTempC: 38.0, RainMediumMM24h: 25.0, RainCriticalMM24h: 50.0},
+	CropTomatoEn:    {FrostTempLimitC: 5.0, HeatMediumTempC: 35.0, HeatCriticalTempC: 38.0, RainMediumMM24h: 25.0, RainCriticalMM24h: 50.0},
+	CropCoffee:      {FrostTempLimitC: 5.0, HeatMediumTempC: 34.0, HeatCriticalTempC: 37.0, RainMediumMM24h: 40.0, RainCriticalMM24h: 70.0},
+	CropCoffeeEn:    {FrostTempLimitC: 5.0, HeatMediumTempC: 34.0, HeatCriticalTempC: 37.0, RainMediumMM24h: 40.0, RainCriticalMM24h: 70.0},
+	CropBean:        {FrostTempLimitC: 4.0, HeatMediumTempC: 34.0, HeatCriticalTempC: 37.0, RainMediumMM24h: 28.0, RainCriticalMM24h: 55.0},
+	CropCassava:     {FrostTempLimitC: 3.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 41.0, RainMediumMM24h: 45.0, RainCriticalMM24h: 80.0},
+	CropCashew:      {FrostTempLimitC: 8.0, HeatMediumTempC: 39.0, HeatCriticalTempC: 42.0, RainMediumMM24h: 50.0, RainCriticalMM24h: 90.0},
+	CropSoy:         {FrostTempLimitC: 3.0, HeatMediumTempC: 36.0, HeatCriticalTempC: 39.0, RainMediumMM24h: 35.0, RainCriticalMM24h: 70.0},
+	CropCotton:      {FrostTempLimitC: 5.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 41.0, RainMediumMM24h: 30.0, RainCriticalMM24h: 60.0},
+	CropFruit:       {FrostTempLimitC: 6.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 41.0, RainMediumMM24h: 25.0, RainCriticalMM24h: 50.0},
 }
 
 func thresholdsFor(crop Crop) CropThresholds {
-	if t, ok := defaultThresholds[crop]; ok {
+	norm := Crop(strings.ToLower(string(crop)))
+	if t, ok := defaultThresholds[norm]; ok {
 		return t
 	}
 	return defaultThresholds[CropDefault]
@@ -65,6 +94,7 @@ func thresholdsFor(crop Crop) CropThresholds {
 type Property struct {
 	Crop      Crop
 	CropStage CropStage
+	SoilType  SoilType
 }
 
 type WeatherReading struct {
@@ -75,21 +105,36 @@ type WeatherReading struct {
 }
 
 type Result struct {
-	Level Level `json:"level"`
-	Alert Alert `json:"alert"`
+	Level       Level     `json:"level"`
+	Alert       Alert     `json:"alert"`
+	PeriodStart time.Time `json:"period_start,omitempty"`
+	PeriodEnd   time.Time `json:"period_end,omitempty"`
 }
 
 const (
 	waterStressTempThresholdC    = 35.0
 	waterStressHumidityThreshold = 30.0
-	waterStressWindow            = 48 * time.Hour
 	heatWaveWindow               = 24 * time.Hour
 	rainWindow                   = 24 * time.Hour
 )
 
-// Evaluate returns the single most severe alert triggered by the
-// readings (Critical beats Medium beats Low). Prefer EvaluateAll when
-// the caller must act on every concurrent risk, not just the worst one.
+// soilWaterStressWindow adjusts drought vulnerability according to soil water holding capacity.
+func soilWaterStressWindow(soil SoilType) time.Duration {
+	switch strings.ToLower(string(soil)) {
+	case "arenoso", "sandy":
+		return 32 * time.Hour // Menor retenção hídrica: seca muito rápido
+	case "raso", "pedregoso", "vertissolo", "litolico":
+		return 28 * time.Hour // Solo raso do semiárido: pouca reserva útil de água
+	case "argiloso", "clay":
+		return 60 * time.Hour // Alta retenção hídrica: resiste por mais tempo
+	case "aluvial", "silte":
+		return 54 * time.Hour // Solo profundo e fértil de baixio/várzea
+	default:
+		return 48 * time.Hour // Solo médio ou padrão FAO-56
+	}
+}
+
+// Evaluate returns the single most severe alert triggered by the readings.
 func Evaluate(p Property, readings []WeatherReading) Result {
 	results := EvaluateAll(p, readings)
 
@@ -113,72 +158,117 @@ func severityRank(l Level) int {
 	}
 }
 
-// EvaluateAll returns every alert currently triggered by the readings,
-// unlike Evaluate which reports only the single most severe one. A
-// property can face independent risks at once (e.g. frost and heavy
-// rain), and callers that persist/notify (Etapa 3/5) need all of them.
+// EvaluateAll returns every alert currently triggered by the readings with its exact incident window.
 func EvaluateAll(p Property, readings []WeatherReading) []Result {
 	var results []Result
 
-	if p.CropStage == StageFlowering && severeWaterStressSustained(readings) {
-		results = append(results, Result{Level: LevelCritical, Alert: AlertSevereWaterStress})
+	// 1. Estresse hídrico severo na floração (ajustado por textura do solo)
+	stressWindow := soilWaterStressWindow(p.SoilType)
+	if p.CropStage == StageFlowering {
+		if ok, start, end := detectSevereWaterStress(readings, stressWindow); ok {
+			results = append(results, Result{
+				Level:       LevelCritical,
+				Alert:       AlertSevereWaterStress,
+				PeriodStart: start,
+				PeriodEnd:   end,
+			})
+		}
 	}
 
 	thresholds := thresholdsFor(p.Crop)
 
-	if frostDetected(readings, thresholds.FrostTempLimitC) {
-		results = append(results, Result{Level: LevelCritical, Alert: AlertFrost})
+	// 2. Geada
+	if ok, start, end := detectFrost(readings, thresholds.FrostTempLimitC); ok {
+		results = append(results, Result{
+			Level:       LevelCritical,
+			Alert:       AlertFrost,
+			PeriodStart: start,
+			PeriodEnd:   end,
+		})
 	}
 
-	switch {
-	case sustainedAbove(readings, thresholds.HeatCriticalTempC, heatWaveWindow):
-		results = append(results, Result{Level: LevelCritical, Alert: AlertHeatWave})
-	case sustainedAbove(readings, thresholds.HeatMediumTempC, heatWaveWindow):
-		results = append(results, Result{Level: LevelMedium, Alert: AlertHeatWave})
+	// 3. Onda de calor
+	if ok, start, end := detectSustainedHeat(readings, thresholds.HeatCriticalTempC, heatWaveWindow); ok {
+		results = append(results, Result{
+			Level:       LevelCritical,
+			Alert:       AlertHeatWave,
+			PeriodStart: start,
+			PeriodEnd:   end,
+		})
+	} else if ok, start, end := detectSustainedHeat(readings, thresholds.HeatMediumTempC, heatWaveWindow); ok {
+		results = append(results, Result{
+			Level:       LevelMedium,
+			Alert:       AlertHeatWave,
+			PeriodStart: start,
+			PeriodEnd:   end,
+		})
 	}
 
-	maxRain := maxPrecipitationInWindow(readings, rainWindow)
-	switch {
-	case maxRain >= thresholds.RainCriticalMM24h:
-		results = append(results, Result{Level: LevelCritical, Alert: AlertHeavyRain})
-	case maxRain >= thresholds.RainMediumMM24h:
-		results = append(results, Result{Level: LevelMedium, Alert: AlertHeavyRain})
+	// 4. Chuva forte
+	if ok, start, end := detectHeavyRain(readings, thresholds.RainCriticalMM24h, rainWindow); ok {
+		results = append(results, Result{
+			Level:       LevelCritical,
+			Alert:       AlertHeavyRain,
+			PeriodStart: start,
+			PeriodEnd:   end,
+		})
+	} else if ok, start, end := detectHeavyRain(readings, thresholds.RainMediumMM24h, rainWindow); ok {
+		results = append(results, Result{
+			Level:       LevelMedium,
+			Alert:       AlertHeavyRain,
+			PeriodStart: start,
+			PeriodEnd:   end,
+		})
 	}
 
 	if len(results) == 0 {
-		results = append(results, Result{Level: LevelLow, Alert: AlertNone})
+		start, end := time.Time{}, time.Time{}
+		if len(readings) > 0 {
+			start = readings[0].Time
+			end = readings[len(readings)-1].Time
+		}
+		results = append(results, Result{
+			Level:       LevelLow,
+			Alert:       AlertNone,
+			PeriodStart: start,
+			PeriodEnd:   end,
+		})
 	}
 
 	return results
 }
 
-func frostDetected(readings []WeatherReading, limitC float64) bool {
-	for _, r := range readings {
+func detectFrost(readings []WeatherReading, limitC float64) (bool, time.Time, time.Time) {
+	for i, r := range readings {
 		if r.TempAvgC < limitC {
-			return true
+			start := r.Time
+			end := r.Time.Add(6 * time.Hour)
+			if i+1 < len(readings) && readings[i+1].Time.After(end) {
+				end = readings[i+1].Time
+			}
+			return true, start, end
 		}
 	}
-	return false
+	return false, time.Time{}, time.Time{}
 }
 
-// maxPrecipitationInWindow returns the largest rolling sum of precipitation
-// found within any span of `window` duration across the readings.
-func maxPrecipitationInWindow(readings []WeatherReading, window time.Duration) float64 {
-	var maxSum float64
+func detectHeavyRain(readings []WeatherReading, thresholdMM float64, window time.Duration) (bool, time.Time, time.Time) {
 	for i := range readings {
 		var sum float64
 		start := readings[i].Time
-		for j := i; j < len(readings) && readings[j].Time.Sub(start) < window; j++ {
+		var lastTime time.Time
+		for j := i; j < len(readings) && readings[j].Time.Sub(start) <= window; j++ {
 			sum += readings[j].PrecipitationMM
-		}
-		if sum > maxSum {
-			maxSum = sum
+			lastTime = readings[j].Time
+			if sum >= thresholdMM {
+				return true, start, lastTime
+			}
 		}
 	}
-	return maxSum
+	return false, time.Time{}, time.Time{}
 }
 
-func sustainedAbove(readings []WeatherReading, tempThresholdC float64, window time.Duration) bool {
+func detectSustainedHeat(readings []WeatherReading, tempThresholdC float64, window time.Duration) (bool, time.Time, time.Time) {
 	var streakStart time.Time
 	inStreak := false
 
@@ -189,18 +279,18 @@ func sustainedAbove(readings []WeatherReading, tempThresholdC float64, window ti
 				inStreak = true
 			}
 			if r.Time.Sub(streakStart) >= window {
-				return true
+				return true, streakStart, r.Time
 			}
 		} else {
 			inStreak = false
 		}
 	}
-	return false
+	return false, time.Time{}, time.Time{}
 }
 
-func severeWaterStressSustained(readings []WeatherReading) bool {
+func detectSevereWaterStress(readings []WeatherReading, window time.Duration) (bool, time.Time, time.Time) {
 	if len(readings) == 0 {
-		return false
+		return false, time.Time{}, time.Time{}
 	}
 
 	var streakStart time.Time
@@ -213,12 +303,12 @@ func severeWaterStressSustained(readings []WeatherReading) bool {
 				streakStart = r.Time
 				inStreak = true
 			}
-			if r.Time.Sub(streakStart) >= waterStressWindow {
-				return true
+			if r.Time.Sub(streakStart) >= window {
+				return true, streakStart, r.Time
 			}
 		} else {
 			inStreak = false
 		}
 	}
-	return false
+	return false, time.Time{}, time.Time{}
 }

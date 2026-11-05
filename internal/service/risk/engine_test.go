@@ -271,3 +271,23 @@ func TestEvaluateAll_MildConditions_ReturnsOnlyLowNone(t *testing.T) {
 		t.Fatalf("expected LevelLow/AlertNone, got %+v", results[0])
 	}
 }
+
+func TestEvaluate_SandySoil_AcceleratedWaterStress(t *testing.T) {
+	readings := []risk.WeatherReading{
+		{Time: time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC), TempAvgC: 36, HumidityPct: 25},
+		{Time: time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC), TempAvgC: 37, HumidityPct: 20}, // 36h later
+	}
+
+	propertySandy := risk.Property{CropStage: risk.StageFlowering, SoilType: risk.SoilSandy}
+	resultSandy := risk.Evaluate(propertySandy, readings)
+
+	if resultSandy.Level != risk.LevelCritical || resultSandy.Alert != risk.AlertSevereWaterStress {
+		t.Fatalf("expected Critical/SevereWaterStress on sandy soil within 36h, got %+v", resultSandy)
+	}
+
+	propertyClay := risk.Property{CropStage: risk.StageFlowering, SoilType: risk.SoilClay}
+	resultClay := risk.Evaluate(propertyClay, readings)
+	if resultClay.Level != risk.LevelLow {
+		t.Fatalf("expected Low on clay soil within 36h, got %+v", resultClay)
+	}
+}

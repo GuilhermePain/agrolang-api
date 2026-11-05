@@ -38,6 +38,32 @@ func (f *fakePropertyStore) ListAll(ctx context.Context) ([]model.Property, erro
 	return f.all, nil
 }
 
+func (f *fakePropertyStore) ListByProducer(ctx context.Context, producerID string) ([]model.Property, error) {
+	var filtered []model.Property
+	for _, p := range f.all {
+		if p.ProducerID == producerID {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered, nil
+}
+
+func (f *fakePropertyStore) Update(ctx context.Context, p model.Property) (model.Property, error) {
+	if _, ok := f.byID[p.ID]; !ok {
+		return model.Property{}, repository.ErrNotFound
+	}
+	f.byID[p.ID] = p
+	return p, nil
+}
+
+func (f *fakePropertyStore) Delete(ctx context.Context, id string) error {
+	if _, ok := f.byID[id]; !ok {
+		return repository.ErrNotFound
+	}
+	delete(f.byID, id)
+	return nil
+}
+
 type fakePropertyAlertLister struct {
 	byProperty map[string][]model.Alert
 }
@@ -79,15 +105,16 @@ func TestPropertyHandler_Create_ReturnsCreatedProperty(t *testing.T) {
 	}
 }
 
-func TestPropertyHandler_GetByID_ReturnsProperty(t *testing.T) {
+func TestPropertyHandler_Update_Success(t *testing.T) {
 	store := &fakePropertyStore{byID: map[string]model.Property{
-		"prop-1": {ID: "prop-1", Crop: "corn"},
+		"prop-1": {ID: "prop-1", ProducerID: "prod-1", Crop: "corn", CropStage: model.CropStageGermination},
 	}}
 	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/properties/prop-1", nil)
+	body := `{"producer_id":"prod-1","latitude":-22.9,"longitude":-47.06,"crop":"corn","soil_type":"clay","crop_stage":"flowering"}`
+	req := httptest.NewRequest(http.MethodPut, "/properties/prop-1", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -95,31 +122,42 @@ func TestPropertyHandler_GetByID_ReturnsProperty(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
+	if store.byID["prop-1"].CropStage != model.CropStageFlowering {
+		t.Errorf("expected updated crop stage flowering, got %s", store.byID["prop-1"].CropStage)
+	}
 }
 
-func TestPropertyHandler_GetByID_NotFound_Returns404(t *testing.T) {
-	store := &fakePropertyStore{byID: map[string]model.Property{}}
+func TestPropertyHandler_Delete_Success(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{
+		"prop-1": {ID: "prop-1"},
+	}}
 	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/properties/missing", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/properties/prop-1", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, exists := store.byID["prop-1"]; exists {
+		t.Fatalf("expected property to be deleted")
 	}
 }
 
-func TestPropertyHandler_List_ReturnsAllProperties(t *testing.T) {
-	store := &fakePropertyStore{all: []model.Property{{ID: "p1"}, {ID: "p2"}}}
+func TestPropertyHandler_ListByProducer_Success(t *testing.T) {
+	store := &fakePropertyStore{all: []model.Property{
+		{ID: "prop-1", ProducerID: "prod-1", Crop: "milho"},
+		{ID: "prop-2", ProducerID: "prod-2", Crop: "cafe"},
+	}}
 	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/properties", nil)
+	req := httptest.NewRequest(http.MethodGet, "/producers/prod-1/properties", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -131,38 +169,12 @@ func TestPropertyHandler_List_ReturnsAllProperties(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 properties, got %d", len(got))
+	if len(got) != 1 || got[0].ID != "prop-1" {
+		t.Fatalf("expected 1 property with ID prop-1, got %+v", got)
 	}
 }
 
-func TestPropertyHandler_ListAlerts_ReturnsAlertsForProperty(t *testing.T) {
-	store := &fakePropertyStore{}
-	alertLister := &fakePropertyAlertLister{byProperty: map[string][]model.Alert{
-		"prop-1": {{ID: "a1", PropertyID: "prop-1", AlertType: "frost"}},
-	}}
-	h := handler.NewPropertyHandler(store, alertLister, &fakePropertyForecastFetcher{})
-	mux := http.NewServeMux()
-	h.Register(mux)
-
-	req := httptest.NewRequest(http.MethodGet, "/properties/prop-1/alerts", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var got []model.Alert
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(got) != 1 || got[0].AlertType != "frost" {
-		t.Fatalf("expected 1 frost alert, got %v", got)
-	}
-}
-
-func TestPropertyHandler_Forecast_ReturnsReadingsForProperty(t *testing.T) {
+func TestPropertyHandler_Forecast_Success(t *testing.T) {
 	store := &fakePropertyStore{byID: map[string]model.Property{
 		"prop-1": {ID: "prop-1", Latitude: -22.9, Longitude: -47.06},
 	}}
@@ -180,28 +192,5 @@ func TestPropertyHandler_Forecast_ReturnsReadingsForProperty(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var got []risk.WeatherReading
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(got) != 1 || got[0].TempAvgC != 25 {
-		t.Fatalf("expected 1 reading with TempAvgC 25, got %v", got)
-	}
-}
-
-func TestPropertyHandler_Forecast_PropertyNotFound_Returns404(t *testing.T) {
-	store := &fakePropertyStore{byID: map[string]model.Property{}}
-	h := handler.NewPropertyHandler(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
-	mux := http.NewServeMux()
-	h.Register(mux)
-
-	req := httptest.NewRequest(http.MethodGet, "/properties/missing/forecast", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

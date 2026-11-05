@@ -84,3 +84,37 @@ func (r *ProducerRepository) GetByID(ctx context.Context, id string) (model.Prod
 	}
 	return p, nil
 }
+
+func (r *ProducerRepository) Update(ctx context.Context, p model.Producer) (model.Producer, error) {
+	const query = `
+		UPDATE producers
+		SET name = $2, whatsapp_phone = $3, city = $4, state = $5, updated_at = now()
+		WHERE id = $1
+		RETURNING id, name, whatsapp_phone, city, state, created_at, updated_at`
+
+	var updated model.Producer
+	err := r.pool.QueryRow(ctx, query, p.ID, p.Name, p.WhatsAppPhone, p.City, p.State).Scan(
+		&updated.ID, &updated.Name, &updated.WhatsAppPhone, &updated.City, &updated.State,
+		&updated.CreatedAt, &updated.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Producer{}, ErrNotFound
+	}
+	if err != nil {
+		return model.Producer{}, fmt.Errorf("repository: update producer: %w", err)
+	}
+	return updated, nil
+}
+
+func (r *ProducerRepository) Delete(ctx context.Context, id string) error {
+	const query = `DELETE FROM producers WHERE id = $1`
+
+	res, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("repository: delete producer: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

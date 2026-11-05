@@ -65,9 +65,64 @@ func (r *PropertyRepository) ListAll(ctx context.Context) ([]model.Property, err
 		FROM properties
 		ORDER BY created_at`
 
-	rows, err := r.pool.Query(ctx, query)
+	return r.queryProperties(ctx, query)
+}
+
+func (r *PropertyRepository) ListByProducer(ctx context.Context, producerID string) ([]model.Property, error) {
+	const query = `
+		SELECT id, producer_id, ST_X(location::geometry), ST_Y(location::geometry),
+			crop, soil_type, crop_stage, created_at, updated_at
+		FROM properties
+		WHERE producer_id = $1
+		ORDER BY created_at`
+
+	return r.queryProperties(ctx, query, producerID)
+}
+
+func (r *PropertyRepository) Update(ctx context.Context, p model.Property) (model.Property, error) {
+	const query = `
+		UPDATE properties
+		SET producer_id = $2,
+		    location = ST_SetSRID(ST_MakePoint($3, $4), 4326),
+		    crop = $5,
+		    soil_type = $6,
+		    crop_stage = $7,
+		    updated_at = now()
+		WHERE id = $1
+		RETURNING id, producer_id, ST_X(location::geometry), ST_Y(location::geometry),
+			crop, soil_type, crop_stage, created_at, updated_at`
+
+	var updated model.Property
+	err := r.pool.QueryRow(ctx, query, p.ID, p.ProducerID, p.Longitude, p.Latitude, p.Crop, p.SoilType, p.CropStage).Scan(
+		&updated.ID, &updated.ProducerID, &updated.Longitude, &updated.Latitude,
+		&updated.Crop, &updated.SoilType, &updated.CropStage, &updated.CreatedAt, &updated.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Property{}, ErrNotFound
+	}
 	if err != nil {
-		return nil, fmt.Errorf("repository: list properties: %w", err)
+		return model.Property{}, fmt.Errorf("repository: update property: %w", err)
+	}
+	return updated, nil
+}
+
+func (r *PropertyRepository) Delete(ctx context.Context, id string) error {
+	const query = `DELETE FROM properties WHERE id = $1`
+
+	res, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("repository: delete property: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *PropertyRepository) queryProperties(ctx context.Context, query string, args ...any) ([]model.Property, error) {
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("repository: query properties: %w", err)
 	}
 	defer rows.Close()
 

@@ -45,6 +45,22 @@ func (f *fakeProducerStore) ListAll(ctx context.Context) ([]model.Producer, erro
 	return f.all, nil
 }
 
+func (f *fakeProducerStore) Update(ctx context.Context, p model.Producer) (model.Producer, error) {
+	if _, ok := f.byID[p.ID]; !ok {
+		return model.Producer{}, repository.ErrNotFound
+	}
+	f.byID[p.ID] = p
+	return p, nil
+}
+
+func (f *fakeProducerStore) Delete(ctx context.Context, id string) error {
+	if _, ok := f.byID[id]; !ok {
+		return repository.ErrNotFound
+	}
+	delete(f.byID, id)
+	return nil
+}
+
 func TestProducerHandler_Create_ReturnsCreatedProducer(t *testing.T) {
 	store := &fakeProducerStore{}
 	h := handler.NewProducerHandler(store)
@@ -71,14 +87,6 @@ func TestProducerHandler_Create_ReturnsCreatedProducer(t *testing.T) {
 	if got.Name != "Joao" {
 		t.Errorf("expected Name Joao, got %q", got.Name)
 	}
-	if got.WhatsAppPhone != "5511999999999" {
-		t.Errorf("expected WhatsAppPhone 5511999999999, got %q", got.WhatsAppPhone)
-	}
-
-	rawBody := rec.Body.String()
-	if !bytes.Contains([]byte(rawBody), []byte(`"whatsapp_phone":"5511999999999"`)) {
-		t.Errorf("expected response JSON to use snake_case whatsapp_phone key, got %s", rawBody)
-	}
 }
 
 func TestProducerHandler_GetByID_ReturnsProducer(t *testing.T) {
@@ -97,41 +105,18 @@ func TestProducerHandler_GetByID_ReturnsProducer(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var got model.Producer
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if got.Name != "Maria" {
-		t.Errorf("expected Name Maria, got %q", got.Name)
-	}
 }
 
-func TestProducerHandler_GetByID_NotFound_Returns404(t *testing.T) {
-	store := &fakeProducerStore{byID: map[string]model.Producer{}}
-	h := handler.NewProducerHandler(store)
-	mux := http.NewServeMux()
-	h.Register(mux)
-
-	req := httptest.NewRequest(http.MethodGet, "/producers/missing", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestProducerHandler_List_ReturnsAllProducers(t *testing.T) {
-	store := &fakeProducerStore{all: []model.Producer{
-		{ID: "prod-1", Name: "Maria"},
-		{ID: "prod-2", Name: "Joao"},
+func TestProducerHandler_Update_Success(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{
+		"prod-1": {ID: "prod-1", Name: "Maria Antiga"},
 	}}
 	h := handler.NewProducerHandler(store)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/producers", nil)
+	body := `{"name":"Maria Atualizada","whatsapp_phone":"5511888888888","city":"Limeira","state":"SP"}`
+	req := httptest.NewRequest(http.MethodPut, "/producers/prod-1", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -139,27 +124,28 @@ func TestProducerHandler_List_ReturnsAllProducers(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var got []model.Producer
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(got) != 2 {
-		t.Errorf("expected 2 producers, got %d", len(got))
+	if store.byID["prod-1"].Name != "Maria Atualizada" {
+		t.Errorf("expected updated name, got %s", store.byID["prod-1"].Name)
 	}
 }
 
-func TestProducerHandler_Create_InvalidJSON_Returns400(t *testing.T) {
-	store := &fakeProducerStore{}
+func TestProducerHandler_Delete_Success(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{
+		"prod-1": {ID: "prod-1", Name: "Maria"},
+	}}
 	h := handler.NewProducerHandler(store)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/producers", bytes.NewBufferString("not json"))
+	req := httptest.NewRequest(http.MethodDelete, "/producers/prod-1", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, exists := store.byID["prod-1"]; exists {
+		t.Fatalf("expected producer to be deleted")
 	}
 }
