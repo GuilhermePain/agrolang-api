@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { listProperties, getPropertyAlerts } from "@/lib/api";
 import { logoutAction } from "@/app/actions/auth";
 import PropertyMapClient from "@/components/PropertyMapClient";
@@ -34,7 +35,8 @@ export default async function Home() {
 
   try {
     items = await loadItems();
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     error = "Não foi possível carregar as propriedades. Verifique se a API está no ar.";
   }
 
@@ -48,7 +50,7 @@ export default async function Home() {
 
   const sorted = sortByPriority(items, user.concerns);
   const concernChips = user.concerns.map((c) => CONCERN_LABELS[c]).filter(Boolean);
-  const areasNotice = isTechnician ? null : missingAreasNotice(user.onboarding.areas_bucket, items.length);
+  const areasNotice = isTechnician || error ? null : missingAreasNotice(user.onboarding.areas_bucket, items.length);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -79,7 +81,7 @@ export default async function Home() {
             )}
           </div>
 
-          <div className="flex items-end gap-2 rise-in" style={{ animationDelay: "80ms" }}>
+          <div className="flex flex-wrap items-end gap-2 rise-in" style={{ animationDelay: "80ms" }}>
             <CountPill label="Baixo" count={counts.low} tone="low" big={isTechnician} />
             <CountPill label="Médio" count={counts.medium} tone="medium" big={isTechnician} />
             <CountPill label="Crítico" count={counts.critical} tone="critical" big={isTechnician} />

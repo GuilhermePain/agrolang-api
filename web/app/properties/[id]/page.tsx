@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { getPropertyAlerts, getPropertyForecast } from "@/lib/api";
 import { groupByDay } from "@/lib/forecast";
 import { riskLabels } from "@/lib/risk";
@@ -31,7 +32,8 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
     ]);
     alerts = alertsResult;
     daily = groupByDay(forecastResult).slice(0, 7);
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     error = "Não foi possível carregar os dados desta propriedade.";
   }
 
