@@ -19,6 +19,7 @@ export default function LoginForm() {
           type="email"
           inputMode="email"
           autoComplete="email"
+          defaultValue={state?.email}
           className={bigField}
           placeholder="voce@exemplo.com"
           required

@@ -5,7 +5,7 @@ import { ApiError, login, logout, signup } from "@/lib/api";
 import { clearSessionCookie, setSessionCookie } from "@/lib/session";
 
 export type AuthFormState =
-  | { error?: string; fields?: Record<string, string>; emailTaken?: boolean }
+  | { error?: string; fields?: Record<string, string>; emailTaken?: boolean; email?: string }
   | undefined;
 
 const NETWORK_ERROR = "Sem conexão com o servidor. Tente de novo.";
@@ -46,8 +46,10 @@ export async function signupAction(_prev: AuthFormState, formData: FormData): Pr
 export async function loginAction(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  if (email.trim() === "" || password === "") {
-    return { error: "Digite o e-mail e a senha." };
+  // returned with every error so the form can keep the e-mail after React resets it
+  const kept = email.trim();
+  if (kept === "" || password === "") {
+    return { error: "Digite o e-mail e a senha.", email: kept };
   }
 
   let session;
@@ -55,10 +57,10 @@ export async function loginAction(_prev: AuthFormState, formData: FormData): Pro
     session = await login(email, password);
   } catch (err) {
     if (err instanceof ApiError) {
-      if (err.status === 401) return { error: "E-mail ou senha incorretos." };
-      return { error: "Não foi possível entrar agora. Tente de novo." };
+      if (err.status === 401) return { error: "E-mail ou senha incorretos.", email: kept };
+      return { error: "Não foi possível entrar agora. Tente de novo.", email: kept };
     }
-    return { error: NETWORK_ERROR };
+    return { error: NETWORK_ERROR, email: kept };
   }
 
   await setSessionCookie(session.token, new Date(session.expires_at));

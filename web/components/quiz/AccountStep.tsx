@@ -82,7 +82,8 @@ export default function AccountStep({
           className="flex flex-col gap-2 border-2 border-risk-critical bg-risk-critical-bg px-3 py-3 font-mono text-sm text-risk-critical"
         >
           <p>{state.error}</p>
-          {fieldMessages.length > 0 && (
+          {/* a taken e-mail already says it in the paragraph above; don't repeat it as a field message */}
+          {!state.emailTaken && fieldMessages.length > 0 && (
             <ul className="list-disc pl-5 text-xs">
               {fieldMessages.map(([field, message]) => (
                 <li key={field}>{message}</li>
