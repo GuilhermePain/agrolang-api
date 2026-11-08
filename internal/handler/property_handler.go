@@ -16,6 +16,9 @@ type PropertyStore interface {
 	CreateForUser(ctx context.Context, userID string, p model.Property) (model.Property, error)
 	GetByIDForUser(ctx context.Context, id, userID string) (model.Property, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Property, error)
+	ListByProducerForUser(ctx context.Context, producerID, userID string) ([]model.Property, error)
+	UpdateForUser(ctx context.Context, userID string, p model.Property) (model.Property, error)
+	DeleteForUser(ctx context.Context, id, userID string) error
 }
 
 type PropertyAlertLister interface {
@@ -40,8 +43,11 @@ func (h *PropertyHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /properties", h.create)
 	mux.HandleFunc("GET /properties", h.list)
 	mux.HandleFunc("GET /properties/{id}", h.getByID)
+	mux.HandleFunc("PUT /properties/{id}", h.update)
+	mux.HandleFunc("DELETE /properties/{id}", h.delete)
 	mux.HandleFunc("GET /properties/{id}/alerts", h.listAlerts)
 	mux.HandleFunc("GET /properties/{id}/forecast", h.forecastFor)
+	mux.HandleFunc("GET /producers/{id}/properties", h.listByProducer)
 }
 
 func (h *PropertyHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -103,13 +109,95 @@ func (h *PropertyHandler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?producer_id= narrows the list to one producer, still only among the
+	// user's own properties: a foreign producer simply yields an empty list.
 	properties, err := h.store.ListByUser(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list properties")
 		return
 	}
 
+	if producerID := r.URL.Query().Get("producer_id"); producerID != "" {
+		filtered := make([]model.Property, 0, len(properties))
+		for _, p := range properties {
+			if p.ProducerID == producerID {
+				filtered = append(filtered, p)
+			}
+		}
+		properties = filtered
+	}
+
 	writeJSON(w, http.StatusOK, properties)
+}
+
+func (h *PropertyHandler) listByProducer(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+
+	properties, err := h.store.ListByProducerForUser(r.Context(), r.PathValue("id"), user.ID)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "producer not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list properties for producer")
+		return
+	}
+	writeJSON(w, http.StatusOK, properties)
+}
+
+// update only touches the user's own properties. producer_id in the body is
+// optional: empty keeps the current producer, and a non-empty value must be
+// another producer owned by the same user. The repository enforces both in
+// the UPDATE itself and returns ErrNotFound otherwise, so a property can
+// never be moved into another account.
+func (h *PropertyHandler) update(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+
+	var p model.Property
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	p.ID = id
+
+	updated, err := h.store.UpdateForUser(r.Context(), user.ID, p)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "property not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update property")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (h *PropertyHandler) delete(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+
+	err := h.store.DeleteForUser(r.Context(), id, user.ID)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "property not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete property")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }
 
 func (h *PropertyHandler) listAlerts(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,8 @@ type ProducerStore interface {
 	CreateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error)
 	GetByIDForUser(ctx context.Context, id, userID string) (model.Producer, error)
 	ListByUser(ctx context.Context, userID string) ([]model.Producer, error)
+	UpdateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error)
+	DeleteForUser(ctx context.Context, id, userID string) error
 }
 
 type ProducerHandler struct {
@@ -28,6 +30,8 @@ func (h *ProducerHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /producers", h.create)
 	mux.HandleFunc("GET /producers", h.list)
 	mux.HandleFunc("GET /producers/{id}", h.getByID)
+	mux.HandleFunc("PUT /producers/{id}", h.update)
+	mux.HandleFunc("DELETE /producers/{id}", h.delete)
 }
 
 func (h *ProducerHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -83,4 +87,51 @@ func (h *ProducerHandler) getByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, p)
+}
+
+func (h *ProducerHandler) update(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+
+	var p model.Producer
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	p.ID = id
+
+	updated, err := h.store.UpdateForUser(r.Context(), user.ID, p)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "producer not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update producer")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+
+func (h *ProducerHandler) delete(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+
+	err := h.store.DeleteForUser(r.Context(), id, user.ID)
+	if errors.Is(err, repository.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "producer not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete producer")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }

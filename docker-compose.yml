@@ -16,6 +16,19 @@ services:
       timeout: 5s
       retries: 5
 
+  migrations:
+    image: migrate/migrate:v4.17.0
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgres://${DB_USER:-agrolang}:${DB_PASSWORD:-agrolang}@db:5432/${DB_NAME:-agrolang}?sslmode=disable
+      - up
+
   api:
     build:
       context: .
@@ -24,6 +37,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     env_file:

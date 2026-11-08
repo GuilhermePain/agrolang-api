@@ -22,6 +22,8 @@ type fakeProducerStore struct {
 	all         []model.Producer
 	createErr   error
 	listErr     error
+	updatedFor  string
+	deletedFor  string
 }
 
 func (f *fakeProducerStore) CreateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error) {
@@ -49,6 +51,27 @@ func (f *fakeProducerStore) ListByUser(ctx context.Context, userID string) ([]mo
 		return nil, f.listErr
 	}
 	return f.all, nil
+}
+
+// UpdateForUser and DeleteForUser mimic the repository: byID only holds the
+// test user's producers, so any other ID behaves like someone else's
+// producer and yields ErrNotFound.
+func (f *fakeProducerStore) UpdateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error) {
+	f.updatedFor = userID
+	if _, ok := f.byID[p.ID]; !ok {
+		return model.Producer{}, repository.ErrNotFound
+	}
+	f.byID[p.ID] = p
+	return p, nil
+}
+
+func (f *fakeProducerStore) DeleteForUser(ctx context.Context, id, userID string) error {
+	f.deletedFor = userID
+	if _, ok := f.byID[id]; !ok {
+		return repository.ErrNotFound
+	}
+	delete(f.byID, id)
+	return nil
 }
 
 func newProducerMux(store *fakeProducerStore) *http.ServeMux {
@@ -155,6 +178,91 @@ func TestProducerHandler_Create_InvalidJSON_Returns400(t *testing.T) {
 	}
 }
 
+func TestProducerHandler_Update_Success(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{
+		"prod-1": {ID: "prod-1", Name: "Maria Antiga"},
+	}}
+	mux := newProducerMux(store)
+
+	body := `{"name":"Maria Atualizada","whatsapp_phone":"5511888888888","city":"Limeira","state":"SP"}`
+	req := authed(httptest.NewRequest(http.MethodPut, "/producers/prod-1", bytes.NewBufferString(body)))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if store.byID["prod-1"].Name != "Maria Atualizada" {
+		t.Errorf("expected updated name, got %s", store.byID["prod-1"].Name)
+	}
+	if store.updatedFor != testUserID {
+		t.Errorf("expected update scoped to %q, got %q", testUserID, store.updatedFor)
+	}
+}
+
+func TestProducerHandler_Update_ForeignProducer_Returns404(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{}}
+	mux := newProducerMux(store)
+
+	body := `{"name":"Invasor","whatsapp_phone":"5511","city":"X","state":"SP"}`
+	req := authed(httptest.NewRequest(http.MethodPut, "/producers/someone-elses", bytes.NewBufferString(body)))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProducerHandler_Update_InvalidJSON_Returns400(t *testing.T) {
+	mux := newProducerMux(&fakeProducerStore{byID: map[string]model.Producer{"prod-1": {ID: "prod-1"}}})
+
+	req := authed(httptest.NewRequest(http.MethodPut, "/producers/prod-1", bytes.NewBufferString("not json")))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProducerHandler_Delete_Success(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{
+		"prod-1": {ID: "prod-1", Name: "Maria"},
+	}}
+	mux := newProducerMux(store)
+
+	req := authed(httptest.NewRequest(http.MethodDelete, "/producers/prod-1", nil))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, exists := store.byID["prod-1"]; exists {
+		t.Fatalf("expected producer to be deleted")
+	}
+	if store.deletedFor != testUserID {
+		t.Errorf("expected delete scoped to %q, got %q", testUserID, store.deletedFor)
+	}
+}
+
+func TestProducerHandler_Delete_ForeignProducer_Returns404(t *testing.T) {
+	store := &fakeProducerStore{byID: map[string]model.Producer{"prod-1": {ID: "prod-1"}}}
+	mux := newProducerMux(store)
+
+	req := authed(httptest.NewRequest(http.MethodDelete, "/producers/someone-elses", nil))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, exists := store.byID["prod-1"]; !exists {
+		t.Fatalf("own producer must be untouched")
+	}
+}
+
 func TestProducerHandler_WithoutUser_Returns401(t *testing.T) {
 	mux := newProducerMux(&fakeProducerStore{})
 
@@ -162,6 +270,8 @@ func TestProducerHandler_WithoutUser_Returns401(t *testing.T) {
 		{http.MethodGet, "/producers"},
 		{http.MethodGet, "/producers/prod-1"},
 		{http.MethodPost, "/producers"},
+		{http.MethodPut, "/producers/prod-1"},
+		{http.MethodDelete, "/producers/prod-1"},
 	} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString("{}")))

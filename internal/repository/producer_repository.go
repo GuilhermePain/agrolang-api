@@ -152,3 +152,41 @@ func (r *ProducerRepository) GetByIDForUser(ctx context.Context, id, userID stri
 	}
 	return p, nil
 }
+
+// UpdateForUser updates the producer only if it belongs to the user;
+// otherwise (missing or someone else's) it returns ErrNotFound.
+func (r *ProducerRepository) UpdateForUser(ctx context.Context, userID string, p model.Producer) (model.Producer, error) {
+	const query = `
+		UPDATE producers
+		SET name = $3, whatsapp_phone = $4, city = $5, state = $6, updated_at = now()
+		WHERE id = $1 AND user_id = $2
+		RETURNING id, name, whatsapp_phone, city, state, created_at, updated_at`
+
+	var updated model.Producer
+	err := r.pool.QueryRow(ctx, query, p.ID, userID, p.Name, p.WhatsAppPhone, p.City, p.State).Scan(
+		&updated.ID, &updated.Name, &updated.WhatsAppPhone, &updated.City, &updated.State,
+		&updated.CreatedAt, &updated.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Producer{}, ErrNotFound
+	}
+	if err != nil {
+		return model.Producer{}, fmt.Errorf("repository: update producer for user: %w", err)
+	}
+	return updated, nil
+}
+
+// DeleteForUser deletes the producer (and, by cascade, its properties) only
+// if it belongs to the user; otherwise it returns ErrNotFound.
+func (r *ProducerRepository) DeleteForUser(ctx context.Context, id, userID string) error {
+	const query = `DELETE FROM producers WHERE id = $1 AND user_id = $2`
+
+	res, err := r.pool.Exec(ctx, query, id, userID)
+	if err != nil {
+		return fmt.Errorf("repository: delete producer for user: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

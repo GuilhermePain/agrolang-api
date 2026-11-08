@@ -54,6 +54,68 @@ func (r *AlertRepository) ListRecent(ctx context.Context, limit int) ([]model.Al
 	return r.queryAlerts(ctx, query, limit)
 }
 
+// HasActiveAlert reports whether there is already an unresolved alert of the
+// given type for the property.
+func (r *AlertRepository) HasActiveAlert(ctx context.Context, propertyID, alertType string) (bool, error) {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1 FROM alerts
+			WHERE property_id = $1
+			  AND alert_type  = $2
+			  AND resolved_at IS NULL
+		)`
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, query, propertyID, alertType).Scan(&exists); err != nil {
+		return false, fmt.Errorf("repository: has active alert: %w", err)
+	}
+	return exists, nil
+}
+
+// ResolveForUser marks a single unresolved alert as resolved, but only if
+// its property belongs to one of the user's producers. A missing, foreign or
+// already-resolved alert yields ErrNotFound.
+func (r *AlertRepository) ResolveForUser(ctx context.Context, id, userID string) error {
+	const query = `
+		UPDATE alerts AS a
+		SET resolved_at = now()
+		FROM properties AS p, producers AS pr
+		WHERE a.id = $1
+		  AND a.resolved_at IS NULL
+		  AND p.id = a.property_id
+		  AND pr.id = p.producer_id
+		  AND pr.user_id = $2`
+
+	res, err := r.pool.Exec(ctx, query, id, userID)
+	if err != nil {
+		return fmt.Errorf("repository: resolve alert for user: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ResolveInactiveForProperty resolves unresolved alerts of types that are no longer
+// detected as active in the latest scan cycle.
+func (r *AlertRepository) ResolveInactiveForProperty(ctx context.Context, propertyID string, activeAlertTypes []string) error {
+	var query string
+	var args []any
+
+	if len(activeAlertTypes) == 0 {
+		query = `UPDATE alerts SET resolved_at = now() WHERE property_id = $1 AND resolved_at IS NULL`
+		args = []any{propertyID}
+	} else {
+		query = `UPDATE alerts SET resolved_at = now() WHERE property_id = $1 AND resolved_at IS NULL AND alert_type != ALL($2)`
+		args = []any{propertyID, activeAlertTypes}
+	}
+
+	if _, err := r.pool.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("repository: auto resolve inactive alerts: %w", err)
+	}
+	return nil
+}
+
 func (r *AlertRepository) queryAlerts(ctx context.Context, query string, arg any) ([]model.Alert, error) {
 	rows, err := r.pool.Query(ctx, query, arg)
 	if err != nil {

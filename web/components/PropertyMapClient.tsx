@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { Property, Alert } from "@/lib/api";
+import type { Property, Alert } from "@/lib/types";
 
 const PropertyMap = dynamic(() => import("./PropertyMap"), { ssr: false });
 

@@ -1,4 +1,4 @@
-import type { Alert, RiskLevel } from "./api";
+import type { Alert, RiskLevel } from "./types";
 
 export const riskColors: Record<RiskLevel, string> = {
   low: "#3f7d4f",
@@ -10,6 +10,28 @@ export const riskLabels: Record<RiskLevel, string> = {
   low: "Baixo",
   medium: "Médio",
   critical: "Crítico",
+};
+
+export const cropLabels: Record<string, string> = {
+  milho: "Milho",
+  feijao: "Feijão / Caupi",
+  mandioca: "Mandioca / Macaxeira",
+  caju: "Caju / Cajueiro",
+  tomate: "Tomate",
+  cafe: "Café",
+  soja: "Soja",
+  algodao: "Algodão",
+  fruticultura: "Fruticultura Tropical",
+  cana: "Cana-de-Açúcar",
+  hortalicas: "Hortaliças",
+};
+
+export const soilLabels: Record<string, string> = {
+  medio: "Médio / Franco",
+  argiloso: "Argiloso",
+  arenoso: "Arenoso",
+  raso: "Raso / Vertissolo",
+  aluvial: "Aluvial / Várzea",
 };
 
 /** Current risk is the level of the most recently triggered, unresolved alert; defaults to low. */

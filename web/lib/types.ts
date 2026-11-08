@@ -40,6 +40,11 @@ export type WeatherReading = {
   temp_avg_c: number;
   humidity_pct: number;
   precipitation_mm: number;
+  cloud_cover_pct?: number;
+  wind_speed_kmh?: number;
+  weather_code?: number;
+  apparent_temp_c?: number;
+  rain_prob_pct?: number;
 };
 
 export type NewProducer = {
@@ -69,3 +74,21 @@ export type AuthUser = {
   onboarding: Record<string, string>;
   created_at: string;
 };
+
+export type NotificationStatus = "sent" | "delivered" | "read" | "failed";
+
+export type NotificationLog = {
+  id: string;
+  alert_id?: string;
+  producer_id: string;
+  property_id?: string;
+  phone: string;
+  message: string;
+  status: NotificationStatus;
+  sent_at: string;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  error_message?: string | null;
+};
+
+export type DeleteResult = { status: string; id: string };

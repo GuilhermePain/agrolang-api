@@ -16,6 +16,17 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Configuration
+
+| Variable  | Default                 | Where it is read |
+|-----------|-------------------------|------------------|
+| `API_URL` | `http://localhost:8080` | server only (`lib/config.ts`) |
+
+The browser never calls the Go API. Server Components and the Server Actions in
+`app/actions/` call it through `lib/api.ts`, which sends the `Authorization: Bearer`
+token from the httpOnly `session` cookie and sends expired sessions to `/sair`.
+Client components must import only types from `@/lib/types` and call server actions.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Mono } from "next/font/google";
+import AppNav from "@/components/AppNav";
+import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 const displayFont = Fraunces({
@@ -17,16 +19,22 @@ const monoFont = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "AgroResiliente",
-  description: "Estação de inteligência climática para propriedades rurais",
+  description: "Estação de inteligência e adaptação climática para propriedades rurais",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="pt-BR"
       className={`${displayFont.variable} ${monoFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="h-full min-h-screen lg:h-screen lg:overflow-hidden flex flex-col bg-paper text-ink">
+        <AppShell nav={<AppNav />}>{children}</AppShell>
+      </body>
     </html>
   );
 }

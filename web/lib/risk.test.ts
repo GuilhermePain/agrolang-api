@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { currentRiskLevel } from "./risk";
-import type { Alert } from "./api";
+import type { Alert } from "./types";
 
 function makeAlert(overrides: Partial<Alert>): Alert {
   return {

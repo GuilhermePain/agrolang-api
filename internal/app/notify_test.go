@@ -49,7 +49,7 @@ func TestRunCycle_CriticalAlertNotifiesEvenWhenOwnerDidNotChooseIt(t *testing.T)
 	}}
 	notif := &fakeNotifier{}
 
-	if err := app.RunCycle(context.Background(), lister, fetcher, creator, producers, notif, 2); err != nil {
+	if err := app.RunCycle(context.Background(), lister, fetcher, creator, &fakeAlertChecker{}, producers, notif, 2); err != nil {
 		t.Fatalf("RunCycle: %v", err)
 	}
 
@@ -58,5 +58,73 @@ func TestRunCycle_CriticalAlertNotifiesEvenWhenOwnerDidNotChooseIt(t *testing.T)
 	}
 	if len(notif.sent) != 1 {
 		t.Fatalf("expected a critical frost alert to notify despite concerns, got %d notifications", len(notif.sent))
+	}
+}
+
+// loggingFakeNotifier also implements app.NotificationLogger, like the
+// production loggingNotifier wrapper.
+type loggingFakeNotifier struct {
+	fakeNotifier
+	logs []model.NotificationLog
+}
+
+func (f *loggingFakeNotifier) Create(_ context.Context, n model.NotificationLog) (model.NotificationLog, error) {
+	f.logs = append(f.logs, n)
+	return n, nil
+}
+
+func heavyRainMediumReadings() []risk.WeatherReading {
+	return []risk.WeatherReading{
+		{Time: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), TempAvgC: 22, HumidityPct: 70, PrecipitationMM: 20},
+		{Time: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC), TempAvgC: 22, HumidityPct: 70, PrecipitationMM: 35},
+	}
+}
+
+func TestRunCycle_MediumAlertOutsideOwnerConcerns_PersistsButDoesNotNotify(t *testing.T) {
+	lister := &fakeLister{properties: []model.Property{
+		{ID: "prop-1", ProducerID: "producer-1", Crop: "corn", CropStage: model.CropStageHarvest},
+	}}
+	fetcher := &fakeFetcher{readings: heavyRainMediumReadings()}
+	creator := &fakeAlertCreator{}
+	producers := &fakeProducerFinder{producers: map[string]model.Producer{
+		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999", Concerns: []string{"frost"}},
+	}}
+	notif := &loggingFakeNotifier{}
+
+	if err := app.RunCycle(context.Background(), lister, fetcher, creator, &fakeAlertChecker{}, producers, notif, 1); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+
+	if len(creator.created) != 1 || creator.created[0].alert.Level != string(risk.LevelMedium) {
+		t.Fatalf("expected the medium alert to be persisted, got %+v", creator.created)
+	}
+	if len(notif.sent) != 0 {
+		t.Fatalf("expected no WhatsApp message for a medium risk the owner did not choose, got %d", len(notif.sent))
+	}
+	if len(notif.logs) != 0 {
+		t.Fatalf("expected no notification log when nothing was sent, got %d", len(notif.logs))
+	}
+}
+
+func TestRunCycle_MediumAlertInOwnerConcerns_NotifiesAndLogs(t *testing.T) {
+	lister := &fakeLister{properties: []model.Property{
+		{ID: "prop-1", ProducerID: "producer-1", Crop: "corn", CropStage: model.CropStageHarvest},
+	}}
+	fetcher := &fakeFetcher{readings: heavyRainMediumReadings()}
+	creator := &fakeAlertCreator{}
+	producers := &fakeProducerFinder{producers: map[string]model.Producer{
+		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999", Concerns: []string{"heavy_rain"}},
+	}}
+	notif := &loggingFakeNotifier{}
+
+	if err := app.RunCycle(context.Background(), lister, fetcher, creator, &fakeAlertChecker{}, producers, notif, 1); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+
+	if len(notif.sent) != 1 {
+		t.Fatalf("expected 1 WhatsApp message for a chosen medium risk, got %d", len(notif.sent))
+	}
+	if len(notif.logs) != 1 || notif.logs[0].Status != model.NotificationStatusSent || notif.logs[0].ProducerID != "producer-1" {
+		t.Fatalf("expected 1 sent notification log for producer-1, got %+v", notif.logs)
 	}
 }

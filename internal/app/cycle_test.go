@@ -43,6 +43,15 @@ func (f *fakeAlertCreator) Create(ctx context.Context, a model.Alert) (model.Ale
 	return a, f.err
 }
 
+type fakeAlertChecker struct {
+	active bool
+	err    error
+}
+
+func (f *fakeAlertChecker) HasActiveAlert(_ context.Context, _, _ string) (bool, error) {
+	return f.active, f.err
+}
+
 type fakeProducerFinder struct {
 	producers map[string]model.Producer
 }
@@ -81,12 +90,13 @@ func TestRunCycle_PersistsOnlyMediumAndCriticalAlerts(t *testing.T) {
 		{Time: end, TempAvgC: 4, HumidityPct: 60},
 	}}
 	creator := &fakeAlertCreator{}
+	checker := &fakeAlertChecker{active: false}
 	producers := &fakeProducerFinder{producers: map[string]model.Producer{
 		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
 	}}
 	notif := &fakeNotifier{}
 
-	err := app.RunCycle(context.Background(), lister, fetcher, creator, producers, notif, 2)
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, checker, producers, notif, 2)
 	if err != nil {
 		t.Fatalf("RunCycle: %v", err)
 	}
@@ -104,8 +114,11 @@ func TestRunCycle_PersistsOnlyMediumAndCriticalAlerts(t *testing.T) {
 	if got.Level != string(risk.LevelCritical) {
 		t.Errorf("expected level critical, got %q", got.Level)
 	}
-	if !got.PeriodStart.Equal(start) || !got.PeriodEnd.Equal(end) {
-		t.Errorf("expected period %v-%v, got %v-%v", start, end, got.PeriodStart, got.PeriodEnd)
+	// RunCycle uses the window computed by the risk engine; for frost that is
+	// the first freezing reading plus 6h (see risk.detectFrost).
+	wantEnd := start.Add(6 * time.Hour)
+	if !got.PeriodStart.Equal(start) || !got.PeriodEnd.Equal(wantEnd) {
+		t.Errorf("expected period %v-%v, got %v-%v", start, wantEnd, got.PeriodStart, got.PeriodEnd)
 	}
 
 	if len(notif.sent) != 1 {
@@ -127,12 +140,13 @@ func TestRunCycle_DoesNotPersistOrNotifyLowRisk(t *testing.T) {
 		{Time: time.Now(), TempAvgC: 20, HumidityPct: 60},
 	}}
 	creator := &fakeAlertCreator{}
+	checker := &fakeAlertChecker{active: false}
 	producers := &fakeProducerFinder{producers: map[string]model.Producer{
 		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
 	}}
 	notif := &fakeNotifier{}
 
-	err := app.RunCycle(context.Background(), lister, fetcher, creator, producers, notif, 2)
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, checker, producers, notif, 2)
 	if err != nil {
 		t.Fatalf("RunCycle: %v", err)
 	}
@@ -152,12 +166,13 @@ func TestRunCycle_PropertyFetchError_DoesNotAbortCycle(t *testing.T) {
 	}}
 	fetcher := &fakeFetcher{err: context.DeadlineExceeded}
 	creator := &fakeAlertCreator{}
+	checker := &fakeAlertChecker{active: false}
 	producers := &fakeProducerFinder{producers: map[string]model.Producer{
 		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
 	}}
 	notif := &fakeNotifier{}
 
-	err := app.RunCycle(context.Background(), lister, fetcher, creator, producers, notif, 2)
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, checker, producers, notif, 2)
 	if err != nil {
 		t.Fatalf("RunCycle: %v", err)
 	}
@@ -177,16 +192,113 @@ func TestRunCycle_NotifyError_DoesNotAbortCycle(t *testing.T) {
 		{Time: time.Now(), TempAvgC: 2, HumidityPct: 60},
 	}}
 	creator := &fakeAlertCreator{}
+	checker := &fakeAlertChecker{active: false}
 	producers := &fakeProducerFinder{producers: map[string]model.Producer{
 		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
 	}}
 	notif := &fakeNotifier{err: context.DeadlineExceeded}
 
-	err := app.RunCycle(context.Background(), lister, fetcher, creator, producers, notif, 2)
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, checker, producers, notif, 2)
 	if err != nil {
 		t.Fatalf("RunCycle: %v", err)
 	}
 	if len(creator.created) != 1 {
 		t.Fatalf("expected alert still persisted despite notify error, got %d", len(creator.created))
+	}
+}
+
+func TestRunCycle_SkipsPersistAndNotifyWhenAlertAlreadyActive(t *testing.T) {
+	lister := &fakeLister{properties: []model.Property{
+		{ID: "prop-1", ProducerID: "producer-1", Crop: "tomato", CropStage: model.CropStageHarvest},
+	}}
+	fetcher := &fakeFetcher{readings: []risk.WeatherReading{
+		{Time: time.Now(), TempAvgC: 2, HumidityPct: 60},
+	}}
+	creator := &fakeAlertCreator{}
+	// checker reports that an active alert already exists for this property/type
+	checker := &fakeAlertChecker{active: true}
+	producers := &fakeProducerFinder{producers: map[string]model.Producer{
+		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
+	}}
+	notif := &fakeNotifier{}
+
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, checker, producers, notif, 2)
+	if err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if len(creator.created) != 0 {
+		t.Fatalf("expected no new alert created (duplicate), got %d", len(creator.created))
+	}
+	if len(notif.sent) != 0 {
+		t.Fatalf("expected no notification sent (duplicate), got %d", len(notif.sent))
+	}
+}
+
+func TestRunCycle_CheckerError_SkipsPropertyButDoesNotAbortCycle(t *testing.T) {
+	lister := &fakeLister{properties: []model.Property{
+		{ID: "prop-1", ProducerID: "producer-1", Crop: "tomato", CropStage: model.CropStageHarvest},
+		{ID: "prop-2", ProducerID: "producer-1", Crop: "tomato", CropStage: model.CropStageFlowering},
+	}}
+	// Both properties have frost-triggering readings.
+	now := time.Now()
+	fetcher := &fakeFetcher{readings: []risk.WeatherReading{
+		{Time: now, TempAvgC: 2, HumidityPct: 60},
+	}}
+	creator := &fakeAlertCreator{}
+	// Checker always returns an error — every alert must be skipped.
+	checker := &fakeAlertChecker{err: context.DeadlineExceeded}
+	producers := &fakeProducerFinder{producers: map[string]model.Producer{
+		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
+	}}
+	notif := &fakeNotifier{}
+
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, checker, producers, notif, 2)
+	if err != nil {
+		t.Fatalf("RunCycle must not return an error when checker fails: %v", err)
+	}
+	if len(creator.created) != 0 {
+		t.Fatalf("expected no alerts created when checker errors, got %d", len(creator.created))
+	}
+	if len(notif.sent) != 0 {
+		t.Fatalf("expected no notifications sent when checker errors, got %d", len(notif.sent))
+	}
+}
+
+type fakeAlertAutoResolverChecker struct {
+	resolvedProperties []string
+}
+
+func (f *fakeAlertAutoResolverChecker) HasActiveAlert(_ context.Context, _, _ string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeAlertAutoResolverChecker) ResolveInactiveForProperty(_ context.Context, propertyID string, activeAlertTypes []string) error {
+	if len(activeAlertTypes) == 0 {
+		f.resolvedProperties = append(f.resolvedProperties, propertyID)
+	}
+	return nil
+}
+
+func TestRunCycle_AutoResolvesWhenConditionsNormalized(t *testing.T) {
+	lister := &fakeLister{properties: []model.Property{
+		{ID: "prop-safe", ProducerID: "producer-1", Crop: "tomato", CropStage: model.CropStageHarvest},
+	}}
+	// Normal weather: no frost, no heavy rain, no heatwave
+	fetcher := &fakeFetcher{readings: []risk.WeatherReading{
+		{Time: time.Now(), TempAvgC: 22, HumidityPct: 60, PrecipitationMM: 0},
+	}}
+	creator := &fakeAlertCreator{}
+	resolverChecker := &fakeAlertAutoResolverChecker{}
+	producers := &fakeProducerFinder{producers: map[string]model.Producer{
+		"producer-1": {ID: "producer-1", WhatsAppPhone: "5511999999999"},
+	}}
+	notif := &fakeNotifier{}
+
+	err := app.RunCycle(context.Background(), lister, fetcher, creator, resolverChecker, producers, notif, 1)
+	if err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if len(resolverChecker.resolvedProperties) != 1 || resolverChecker.resolvedProperties[0] != "prop-safe" {
+		t.Fatalf("expected prop-safe to have its inactive alerts auto-resolved, got %+v", resolverChecker.resolvedProperties)
 	}
 }

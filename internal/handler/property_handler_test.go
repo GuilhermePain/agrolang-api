@@ -16,12 +16,18 @@ import (
 	"github.com/GuilhermePain/agrolang-api/internal/weather"
 )
 
+// fakePropertyStore holds only the test user's data: byID/all are the user's
+// properties and ownedProducers the user's producers. Anything else behaves
+// like another account's data and yields ErrNotFound, as the repository does.
 type fakePropertyStore struct {
-	byID       map[string]model.Property
-	all        []model.Property
-	createErr  error
-	createdFor string
-	listedFor  string
+	byID           map[string]model.Property
+	all            []model.Property
+	ownedProducers map[string]bool
+	createErr      error
+	createdFor     string
+	listedFor      string
+	updatedFor     string
+	deletedFor     string
 }
 
 func (f *fakePropertyStore) CreateForUser(ctx context.Context, userID string, p model.Property) (model.Property, error) {
@@ -44,6 +50,44 @@ func (f *fakePropertyStore) GetByIDForUser(ctx context.Context, id, userID strin
 func (f *fakePropertyStore) ListByUser(ctx context.Context, userID string) ([]model.Property, error) {
 	f.listedFor = userID
 	return f.all, nil
+}
+
+func (f *fakePropertyStore) ListByProducerForUser(ctx context.Context, producerID, userID string) ([]model.Property, error) {
+	f.listedFor = userID
+	if !f.ownedProducers[producerID] {
+		return nil, repository.ErrNotFound
+	}
+	filtered := make([]model.Property, 0)
+	for _, p := range f.all {
+		if p.ProducerID == producerID {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered, nil
+}
+
+func (f *fakePropertyStore) UpdateForUser(ctx context.Context, userID string, p model.Property) (model.Property, error) {
+	f.updatedFor = userID
+	current, ok := f.byID[p.ID]
+	if !ok {
+		return model.Property{}, repository.ErrNotFound
+	}
+	if p.ProducerID == "" {
+		p.ProducerID = current.ProducerID
+	} else if !f.ownedProducers[p.ProducerID] {
+		return model.Property{}, repository.ErrNotFound
+	}
+	f.byID[p.ID] = p
+	return p, nil
+}
+
+func (f *fakePropertyStore) DeleteForUser(ctx context.Context, id, userID string) error {
+	f.deletedFor = userID
+	if _, ok := f.byID[id]; !ok {
+		return repository.ErrNotFound
+	}
+	delete(f.byID, id)
+	return nil
 }
 
 type fakePropertyAlertLister struct {
@@ -214,13 +258,190 @@ func TestPropertyHandler_Forecast_PropertyNotFound_Returns404(t *testing.T) {
 	}
 }
 
+func TestPropertyHandler_List_FilterByProducerID_StaysWithinUsersProperties(t *testing.T) {
+	store := &fakePropertyStore{all: []model.Property{
+		{ID: "p1", ProducerID: "prod-1"},
+		{ID: "p2", ProducerID: "prod-2"},
+	}}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	rec := serve(mux, http.MethodGet, "/properties?producer_id=prod-1", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got []model.Property
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "p1" {
+		t.Fatalf("expected only p1, got %+v", got)
+	}
+	if store.listedFor != testUserID {
+		t.Errorf("expected list scoped to %q, got %q", testUserID, store.listedFor)
+	}
+}
+
+func TestPropertyHandler_Update_Success(t *testing.T) {
+	store := &fakePropertyStore{
+		byID: map[string]model.Property{
+			"prop-1": {ID: "prop-1", ProducerID: "prod-1", Crop: "corn", CropStage: model.CropStageGermination},
+		},
+		ownedProducers: map[string]bool{"prod-1": true},
+	}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	body := `{"producer_id":"prod-1","latitude":-22.9,"longitude":-47.06,"crop":"corn","soil_type":"clay","crop_stage":"flowering"}`
+	rec := serve(mux, http.MethodPut, "/properties/prop-1", body)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if store.byID["prop-1"].CropStage != model.CropStageFlowering {
+		t.Errorf("expected updated crop stage flowering, got %s", store.byID["prop-1"].CropStage)
+	}
+	if store.updatedFor != testUserID {
+		t.Errorf("expected update scoped to %q, got %q", testUserID, store.updatedFor)
+	}
+}
+
+func TestPropertyHandler_Update_ForeignProperty_Returns404(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{}, ownedProducers: map[string]bool{"prod-1": true}}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	body := `{"producer_id":"prod-1","latitude":0,"longitude":0,"crop":"x","soil_type":"y","crop_stage":"harvest"}`
+	rec := serve(mux, http.MethodPut, "/properties/someone-elses", body)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPropertyHandler_Update_MoveToForeignProducer_Returns404(t *testing.T) {
+	store := &fakePropertyStore{
+		byID:           map[string]model.Property{"prop-1": {ID: "prop-1", ProducerID: "prod-1", Crop: "corn"}},
+		ownedProducers: map[string]bool{"prod-1": true},
+	}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	body := `{"producer_id":"someone-elses-producer","latitude":0,"longitude":0,"crop":"x","soil_type":"y","crop_stage":"harvest"}`
+	rec := serve(mux, http.MethodPut, "/properties/prop-1", body)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if store.byID["prop-1"].ProducerID != "prod-1" || store.byID["prop-1"].Crop != "corn" {
+		t.Fatalf("property must be untouched, got %+v", store.byID["prop-1"])
+	}
+}
+
+func TestPropertyHandler_Update_InvalidJSON_Returns400(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{"prop-1": {ID: "prop-1"}}}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	rec := serve(mux, http.MethodPut, "/properties/prop-1", "not json")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPropertyHandler_Delete_Success(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{"prop-1": {ID: "prop-1"}}}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	rec := serve(mux, http.MethodDelete, "/properties/prop-1", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, exists := store.byID["prop-1"]; exists {
+		t.Fatalf("expected property to be deleted")
+	}
+	if store.deletedFor != testUserID {
+		t.Errorf("expected delete scoped to %q, got %q", testUserID, store.deletedFor)
+	}
+}
+
+func TestPropertyHandler_Delete_ForeignProperty_Returns404(t *testing.T) {
+	store := &fakePropertyStore{byID: map[string]model.Property{"prop-1": {ID: "prop-1"}}}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	rec := serve(mux, http.MethodDelete, "/properties/someone-elses", "")
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, exists := store.byID["prop-1"]; !exists {
+		t.Fatalf("own property must be untouched")
+	}
+}
+
+func TestPropertyHandler_ListByProducer_Success(t *testing.T) {
+	store := &fakePropertyStore{
+		all: []model.Property{
+			{ID: "prop-1", ProducerID: "prod-1", Crop: "milho"},
+			{ID: "prop-2", ProducerID: "prod-2", Crop: "cafe"},
+		},
+		ownedProducers: map[string]bool{"prod-1": true, "prod-2": true},
+	}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	rec := serve(mux, http.MethodGet, "/producers/prod-1/properties", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got []model.Property
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "prop-1" {
+		t.Fatalf("expected 1 property with ID prop-1, got %+v", got)
+	}
+	if store.listedFor != testUserID {
+		t.Errorf("expected list scoped to %q, got %q", testUserID, store.listedFor)
+	}
+}
+
+func TestPropertyHandler_ListByProducer_ForeignProducer_Returns404(t *testing.T) {
+	store := &fakePropertyStore{
+		all:            []model.Property{{ID: "prop-9", ProducerID: "prod-9"}},
+		ownedProducers: map[string]bool{},
+	}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+
+	rec := serve(mux, http.MethodGet, "/producers/prod-9/properties", "")
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a producer the user does not own, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPropertyHandler_WithoutUser_Returns401(t *testing.T) {
-	mux := newPropertyMux(&fakePropertyStore{}, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
+	store := &fakePropertyStore{
+		byID:           map[string]model.Property{"prop-1": {ID: "prop-1", ProducerID: "prod-1"}},
+		ownedProducers: map[string]bool{"prod-1": true},
+	}
+	mux := newPropertyMux(store, &fakePropertyAlertLister{}, &fakePropertyForecastFetcher{})
 
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/properties", nil))
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/properties"},
+		{http.MethodPost, "/properties"},
+		{http.MethodGet, "/properties/prop-1"},
+		{http.MethodPut, "/properties/prop-1"},
+		{http.MethodDelete, "/properties/prop-1"},
+		{http.MethodGet, "/properties/prop-1/alerts"},
+		{http.MethodGet, "/properties/prop-1/forecast"},
+		{http.MethodGet, "/producers/prod-1/properties"},
+	} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString("{}")))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s: expected 401, got %d", tc.method, tc.path, rec.Code)
+		}
+	}
+	if _, exists := store.byID["prop-1"]; !exists {
+		t.Fatalf("unauthenticated requests must not delete anything")
 	}
 }

@@ -1,4 +1,4 @@
-import type { CropStage } from "./api";
+import type { CropStage } from "./types";
 
 const CROP_STAGES: CropStage[] = ["germination", "flowering", "harvest"];
 

@@ -122,3 +122,81 @@ func TestAlertRepository_ListRecent_OrdersByTriggeredAtDesc(t *testing.T) {
 		t.Fatalf("expected 2 alerts (limit), got %d", len(recent))
 	}
 }
+
+func TestAlertRepository_HasActiveAlert_TrueWhenUnresolved(t *testing.T) {
+	pool := testPool(t)
+	producers := repository.NewProducerRepository(pool)
+	properties := repository.NewPropertyRepository(pool)
+	alerts := repository.NewAlertRepository(pool)
+	ctx := context.Background()
+
+	property := createTestProperty(t, producers, properties)
+	start := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
+
+	_, err := alerts.Create(ctx, model.Alert{
+		PropertyID:  property.ID,
+		Level:       "critical",
+		AlertType:   "frost",
+		PeriodStart: start,
+		PeriodEnd:   start.Add(48 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	active, err := alerts.HasActiveAlert(ctx, property.ID, "frost")
+	if err != nil {
+		t.Fatalf("HasActiveAlert: %v", err)
+	}
+	if !active {
+		t.Error("expected HasActiveAlert to return true for an unresolved alert")
+	}
+}
+
+func TestAlertRepository_HasActiveAlert_FalseWhenNoneExists(t *testing.T) {
+	pool := testPool(t)
+	producers := repository.NewProducerRepository(pool)
+	properties := repository.NewPropertyRepository(pool)
+	alerts := repository.NewAlertRepository(pool)
+	ctx := context.Background()
+
+	property := createTestProperty(t, producers, properties)
+
+	active, err := alerts.HasActiveAlert(ctx, property.ID, "frost")
+	if err != nil {
+		t.Fatalf("HasActiveAlert: %v", err)
+	}
+	if active {
+		t.Error("expected HasActiveAlert to return false when no alert exists")
+	}
+}
+
+func TestAlertRepository_HasActiveAlert_FalseForDifferentAlertType(t *testing.T) {
+	pool := testPool(t)
+	producers := repository.NewProducerRepository(pool)
+	properties := repository.NewPropertyRepository(pool)
+	alerts := repository.NewAlertRepository(pool)
+	ctx := context.Background()
+
+	property := createTestProperty(t, producers, properties)
+	start := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
+
+	_, err := alerts.Create(ctx, model.Alert{
+		PropertyID:  property.ID,
+		Level:       "medium",
+		AlertType:   "heavy_rain",
+		PeriodStart: start,
+		PeriodEnd:   start.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	active, err := alerts.HasActiveAlert(ctx, property.ID, "frost")
+	if err != nil {
+		t.Fatalf("HasActiveAlert: %v", err)
+	}
+	if active {
+		t.Error("expected HasActiveAlert to return false for a different alert type")
+	}
+}

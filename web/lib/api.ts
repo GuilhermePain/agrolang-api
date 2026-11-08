@@ -1,11 +1,15 @@
+// Server-only: reads the httpOnly session cookie. Browser code goes through
+// the server actions in app/actions/*, never through this module.
 import { redirect } from "next/navigation";
 import { API_URL } from "./config";
 import { getSessionToken } from "./session";
 import type {
   Alert,
   AuthUser,
+  DeleteResult,
   NewProducer,
   NewProperty,
+  NotificationLog,
   Producer,
   Property,
   WeatherReading,
@@ -15,8 +19,11 @@ export type {
   Alert,
   AuthUser,
   CropStage,
+  DeleteResult,
   NewProducer,
   NewProperty,
+  NotificationLog,
+  NotificationStatus,
   Producer,
   Property,
   RiskLevel,
@@ -64,7 +71,7 @@ async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T
       if (payload.error) message = payload.error;
       fields = payload.fields;
     } catch {
-      // response body wasn't JSON; keep the generic message
+      // response body wasn't JSON; keep generic
     }
     throw new ApiError(message, res.status, fields);
   }
@@ -73,20 +80,26 @@ async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T
   return res.json() as Promise<T>;
 }
 
+// properties
+
 export function listProperties(): Promise<Property[]> {
   return apiRequest<Property[]>("/properties");
 }
 
-export function listProducers(): Promise<Producer[]> {
-  return apiRequest<Producer[]>("/producers");
-}
-
-export function createProducer(producer: NewProducer): Promise<Producer> {
-  return apiRequest<Producer>("/producers", { method: "POST", body: producer });
+export function getProperty(id: string): Promise<Property> {
+  return apiRequest<Property>(`/properties/${id}`);
 }
 
 export function createProperty(property: NewProperty): Promise<Property> {
   return apiRequest<Property>("/properties", { method: "POST", body: property });
+}
+
+export function updateProperty(id: string, property: NewProperty): Promise<Property> {
+  return apiRequest<Property>(`/properties/${id}`, { method: "PUT", body: property });
+}
+
+export function deleteProperty(id: string): Promise<DeleteResult> {
+  return apiRequest<DeleteResult>(`/properties/${id}`, { method: "DELETE" });
 }
 
 export function getPropertyAlerts(propertyId: string): Promise<Alert[]> {
@@ -97,9 +110,55 @@ export function getPropertyForecast(propertyId: string): Promise<WeatherReading[
   return apiRequest<WeatherReading[]>(`/properties/${propertyId}/forecast`);
 }
 
+// producers
+
+export function listProducers(): Promise<Producer[]> {
+  return apiRequest<Producer[]>("/producers");
+}
+
+export function getProducer(id: string): Promise<Producer> {
+  return apiRequest<Producer>(`/producers/${id}`);
+}
+
+export function createProducer(producer: NewProducer): Promise<Producer> {
+  return apiRequest<Producer>("/producers", { method: "POST", body: producer });
+}
+
+export function updateProducer(id: string, producer: NewProducer): Promise<Producer> {
+  return apiRequest<Producer>(`/producers/${id}`, { method: "PUT", body: producer });
+}
+
+export function deleteProducer(id: string): Promise<DeleteResult> {
+  return apiRequest<DeleteResult>(`/producers/${id}`, { method: "DELETE" });
+}
+
+export function listProducerProperties(producerId: string): Promise<Property[]> {
+  return apiRequest<Property[]>(`/producers/${producerId}/properties`);
+}
+
+export function listProducerNotifications(producerId: string): Promise<NotificationLog[]> {
+  return apiRequest<NotificationLog[]>(`/producers/${producerId}/notifications`);
+}
+
+// alerts, scan, notifications
+
 export function listRecentAlerts(): Promise<Alert[]> {
   return apiRequest<Alert[]>("/alerts");
 }
+
+export function resolveAlert(alertId: string): Promise<DeleteResult> {
+  return apiRequest<DeleteResult>(`/alerts/${alertId}/resolve`, { method: "POST", body: {} });
+}
+
+export function triggerScan(): Promise<{ status: string }> {
+  return apiRequest<{ status: string }>("/scan/run", { method: "POST", body: {} });
+}
+
+export function listRecentNotifications(): Promise<NotificationLog[]> {
+  return apiRequest<NotificationLog[]>("/notifications");
+}
+
+// auth
 
 export function signup(payload: unknown): Promise<SessionResponse> {
   return apiRequest<SessionResponse>("/auth/signup", { method: "POST", body: payload, auth: false });

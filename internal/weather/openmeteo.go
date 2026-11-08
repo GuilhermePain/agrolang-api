@@ -14,6 +14,8 @@ const defaultBaseURL = "https://api.open-meteo.com"
 
 const hourlyParams = "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"
 
+const maxRetries = 3
+
 type Coordinates struct {
 	Lat float64
 	Lon float64
@@ -40,8 +42,10 @@ func WithHTTPClient(httpClient *http.Client) Option {
 
 func NewOpenMeteoClient(opts ...Option) *OpenMeteoClient {
 	c := &OpenMeteoClient{
-		baseURL:    defaultBaseURL,
-		httpClient: http.DefaultClient,
+		baseURL: defaultBaseURL,
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -62,20 +66,40 @@ func (c *OpenMeteoClient) FetchForecast(ctx context.Context, coords Coordinates)
 	url := fmt.Sprintf("%s/v1/forecast?latitude=%f&longitude=%f&hourly=%s",
 		c.baseURL, coords.Lat, coords.Lon, hourlyParams)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("weather: build request: %w", err)
+	var lastErr error
+	var resp *http.Response
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("weather: build request: %w", err)
+		}
+
+		resp, err = c.httpClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			break
+		}
+
+		if resp != nil {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("weather: status %d", resp.StatusCode)
+		} else {
+			lastErr = err
+		}
+
+		if attempt < maxRetries {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt*250) * time.Millisecond):
+			}
+		}
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("weather: request forecast: %w", err)
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("weather: request forecast failed after retries: %w", lastErr)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("weather: unexpected status %d", resp.StatusCode)
-	}
 
 	var parsed forecastResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
