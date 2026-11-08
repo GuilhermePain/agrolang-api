@@ -64,41 +64,25 @@ func main() {
 
 	go runScanLoop(ctx, propertyRepo, weatherClient, alertRepo, producerRepo, activeNotifier, cfg.ScanInterval)
 
-	// Public routes only: health, signup/login and the WhatsApp provider
-	// callback. Everything else is mounted on `protected` below.
-	root := http.NewServeMux()
-	root.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+	scanHandler := handler.NewScanHandler(func(ctx context.Context) error {
+		return app.RunCycle(ctx, propertyRepo, weatherClient, alertRepo, alertRepo, producerRepo, activeNotifier, scanConcurrency)
 	})
 
-	authHandler := handler.NewAuthHandler(signupRepo, userRepo)
-	authHandler.RegisterPublic(root)
-	// Evolution (WhatsApp) delivery callbacks carry no session: public, and
-	// without origin verification for now (see WebhookHandler).
-	handler.NewWebhookHandler(notificationRepo).RegisterPublic(root)
-
-	// Everything else requires a live session and is scoped to its user.
-	protected := http.NewServeMux()
-	authHandler.RegisterProtected(protected)
-
-	// On-demand scan (RF-02, RF-03): any logged-in user may trigger it, but
-	// the scan itself stays global, like the background loop.
-	handler.NewScanHandler(func(ctx context.Context) error {
-		return app.RunCycle(ctx, propertyRepo, weatherClient, alertRepo, alertRepo, producerRepo, activeNotifier, scanConcurrency)
-	}).Register(protected)
-
-	handler.NewProducerHandler(producerRepo).Register(protected)
-	handler.NewPropertyHandler(propertyRepo, alertRepo, weatherClient).Register(protected)
-	handler.NewAlertHandler(alertRepo).Register(protected)
-	handler.NewNotificationHandler(notificationRepo).Register(protected)
-	root.Handle("/", handler.RequireSession(userRepo)(protected))
+	router := newRouter(routerDeps{
+		sessions:      userRepo,
+		auth:          handler.NewAuthHandler(signupRepo, userRepo),
+		producers:     handler.NewProducerHandler(producerRepo),
+		properties:    handler.NewPropertyHandler(propertyRepo, alertRepo, weatherClient),
+		alerts:        handler.NewAlertHandler(alertRepo),
+		notifications: handler.NewNotificationHandler(notificationRepo),
+		webhook:       handler.NewWebhookHandler(notificationRepo),
+		scan:          scanHandler,
+	})
 
 	addr := ":" + cfg.HTTPPort
 	server := &http.Server{
 		Addr:    addr,
-		Handler: handler.WithCORS(root),
+		Handler: router,
 	}
 
 	go func() {
@@ -118,6 +102,54 @@ func main() {
 		log.Printf("server forced to shutdown: %v", err)
 	}
 	log.Println("agrolang-api stopped cleanly")
+}
+
+// routerDeps holds the already-constructed pieces newRouter wires together.
+type routerDeps struct {
+	sessions      handler.SessionLookup
+	auth          *handler.AuthHandler
+	producers     *handler.ProducerHandler
+	properties    *handler.PropertyHandler
+	alerts        *handler.AlertHandler
+	notifications *handler.NotificationHandler
+	webhook       *handler.WebhookHandler
+	scan          *handler.ScanHandler
+}
+
+// newRouter assembles the HTTP handler. It is pure (no I/O) so the route
+// table and the session gate can be tested without a database.
+//
+// Public routes only: health, signup/login and the WhatsApp provider
+// callback. Everything else is mounted on the protected mux, which sits behind
+// RequireSession, and CORS is outermost.
+func newRouter(d routerDeps) http.Handler {
+	root := http.NewServeMux()
+	root.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	d.auth.RegisterPublic(root)
+	// Evolution (WhatsApp) delivery callbacks carry no session: public, and
+	// without origin verification for now (see WebhookHandler).
+	d.webhook.RegisterPublic(root)
+
+	// Everything else requires a live session and is scoped to its user.
+	protected := http.NewServeMux()
+	d.auth.RegisterProtected(protected)
+
+	// On-demand scan (RF-02, RF-03): any logged-in user may trigger it, but
+	// the scan itself stays global, like the background loop.
+	d.scan.Register(protected)
+
+	d.producers.Register(protected)
+	d.properties.Register(protected)
+	d.alerts.Register(protected)
+	d.notifications.Register(protected)
+	root.Handle("/", handler.RequireSession(d.sessions)(protected))
+
+	return handler.WithCORS(root)
 }
 
 func runScanLoop(ctx context.Context, propertyRepo *repository.PropertyRepository, weatherClient *weather.OpenMeteoClient, alertRepo *repository.AlertRepository, producerRepo *repository.ProducerRepository, activeNotifier *loggingNotifier, interval time.Duration) {

@@ -39,7 +39,13 @@ type AuthHandler struct {
 }
 
 func NewAuthHandler(signuper Signuper, store AuthStore) *AuthHandler {
-	dummy, _ := auth.HashPassword("not-a-real-password")
+	dummy, err := auth.HashPassword("not-a-real-password")
+	if err != nil {
+		// Startup-time wiring: without the dummy hash, logins for unknown
+		// emails would return fast and leak which emails are registered, so
+		// the process cannot authenticate safely.
+		panic("handler: cannot compute dummy password hash for login timing: " + err.Error())
+	}
 	return &AuthHandler{signuper: signuper, store: store, dummyHash: dummy}
 }
 
