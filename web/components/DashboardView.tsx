@@ -255,7 +255,7 @@ export default function DashboardView({ items, concerns, isTechnician, loadFaile
         </div>
       ) : (
         /* ================= MODO COMPLETO (ESTÁTICO NO PC: MAPA + TALHÕES OCUPAM 100% DA ALTURA) ================= */
-        <div className="flex flex-1 flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:overflow-hidden lg:h-full min-h-0">
+        <div className="flex flex-1 flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:overflow-hidden lg:h-full lg:min-h-0">
           {/* MAPA INTERATIVO (NO PC OCUPA EXATAMENTE O ESPAÇO DISPONÍVEL) */}
           <div
             className="h-[360px] sm:h-[420px] shrink-0 overflow-hidden border-2 border-ink shadow-[var(--shadow-hard)] lg:h-full lg:flex-1 lg:shrink-0 min-h-0 rise-in"
@@ -265,7 +265,7 @@ export default function DashboardView({ items, concerns, isTechnician, loadFaile
           </div>
 
           {/* BARRA LATERAL DE TALHÕES (NO PC TEM ALTURA FIXA E SCROLL INTERNO) */}
-          <aside className="flex w-full flex-col lg:w-96 lg:h-full min-h-0">
+          <aside className="flex w-full flex-col lg:w-96 lg:h-full lg:min-h-0">
             <div className="shrink-0 mb-2 flex items-center justify-between gap-2">
               <h2 className="font-display text-base italic text-ink">Talhões ({items.length})</h2>
               <div className="flex gap-1.5">
@@ -279,7 +279,7 @@ export default function DashboardView({ items, concerns, isTechnician, loadFaile
             </div>
 
             {empty}
-            <ul className="flex flex-1 flex-col gap-2 overflow-y-auto pr-1 min-h-0">
+            <ul className="flex flex-1 flex-col gap-2 overflow-y-auto pr-1 lg:min-h-0">
               {items.map(({ property, alerts }, i) => {
                 const level = currentRiskLevel(alerts);
                 const prioritized = matchesConcern(alerts, concerns);

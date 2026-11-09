@@ -46,7 +46,7 @@ export default function PropertyWeatherPanel({ daily, crop, soil }: PropertyWeat
   const today = daily[0];
 
   return (
-    <div className="flex flex-col gap-3 min-h-0">
+    <div className="flex flex-col gap-3 lg:min-h-0">
       {/* SELETOR DE MODO: SIMPLIFICADO VS TÉCNICO (SHRINK-0) */}
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 rounded border border-ink bg-card px-3 py-1.5 shadow-[var(--shadow-hard)]">
         <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export default function PropertyWeatherPanel({ daily, crop, soil }: PropertyWeat
           <button
             type="button"
             onClick={() => setSimplifiedMode(true)}
-            className={`px-2.5 py-0.5 font-mono text-[11px] font-bold transition ${
+            className={`touch px-2.5 py-0.5 font-mono text-[11px] font-bold transition ${
               simplifiedMode
                 ? "bg-accent text-paper"
                 : "text-ink hover:bg-line/40"
@@ -76,7 +76,7 @@ export default function PropertyWeatherPanel({ daily, crop, soil }: PropertyWeat
           <button
             type="button"
             onClick={() => setSimplifiedMode(false)}
-            className={`px-2.5 py-0.5 font-mono text-[11px] font-bold transition ${
+            className={`touch px-2.5 py-0.5 font-mono text-[11px] font-bold transition ${
               !simplifiedMode
                 ? "bg-accent text-paper"
                 : "text-ink hover:bg-line/40"
@@ -89,7 +89,7 @@ export default function PropertyWeatherPanel({ daily, crop, soil }: PropertyWeat
 
       {simplifiedMode ? (
         /* ================= MODO SIMPLIFICADO / VISÃO DO AGRICULTOR ================= */
-        <div className="flex flex-col gap-3 min-h-0">
+        <div className="flex flex-col gap-3 lg:min-h-0">
           {/* CARTÃO PRINCIPAL: COMO ESTÁ O CLIMA HOJE */}
           <div className="rounded border-2 border-ink bg-paper p-3.5 shadow-[var(--shadow-hard)]">
             <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-3">

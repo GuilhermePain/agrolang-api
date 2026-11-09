@@ -92,21 +92,21 @@ export default function PropertyMap({ items }: { items: PropertyWithAlerts[] }) 
             <button
               type="button"
               onClick={() => setViewTarget({ center: [-5.3, -39.3], zoom: 7 })}
-              className="rounded border border-ink bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-ink transition hover:bg-ink hover:text-paper"
+              className="touch rounded border border-ink bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-ink transition hover:bg-ink hover:text-paper"
             >
               Ceará
             </button>
             <button
               type="button"
               onClick={() => setViewTarget({ center: [-22.5, -47.1], zoom: 7 })}
-              className="rounded border border-ink bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-ink transition hover:bg-ink hover:text-paper"
+              className="touch rounded border border-ink bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-ink transition hover:bg-ink hover:text-paper"
             >
               Sudeste
             </button>
             <button
               type="button"
               onClick={() => setViewTarget({ center: DEFAULT_CENTER, zoom: 4 })}
-              className="rounded border border-ink bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-ink transition hover:bg-ink hover:text-paper"
+              className="touch rounded border border-ink bg-card px-2 py-0.5 font-mono text-[10px] font-semibold text-ink transition hover:bg-ink hover:text-paper"
             >
               Brasil
             </button>

@@ -61,7 +61,7 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
         <div>
           <Link
             href="/"
-            className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-accent hover:underline"
+            className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-accent hover:underline touch"
           >
             &larr; Voltar ao mapa
           </Link>
@@ -76,7 +76,7 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
           <div className="flex items-center gap-2">
             <Link
               href={`/properties/${property.id}/edit`}
-              className="border border-ink bg-paper px-3 py-1 font-mono text-xs font-semibold uppercase tracking-wide text-ink hover:bg-ink hover:text-paper"
+              className="border border-ink bg-paper px-3 py-1 font-mono text-xs font-semibold uppercase tracking-wide text-ink hover:bg-ink hover:text-paper touch"
             >
               Editar Talhão
             </Link>
@@ -92,9 +92,9 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
       )}
 
       {/* GRADE EM 2 COLUNAS NO DESKTOP (TELA ESTÁTICA INTEGRADA) / FLUIDA NO MOBILE */}
-      <div className="flex flex-1 flex-col gap-4 lg:grid lg:grid-cols-12 min-h-0 lg:overflow-hidden">
+      <div className="flex flex-1 flex-col gap-4 lg:grid lg:grid-cols-12 lg:min-h-0 lg:overflow-hidden">
         {/* COLUNA ESQUERDA: METADADOS + HISTÓRICO DE ALERTAS */}
-        <div className="lg:col-span-5 flex flex-col gap-3 min-h-0 lg:overflow-y-auto pr-1">
+        <div className="lg:col-span-5 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto pr-1">
           {/* METADADOS DO TALHÃO */}
           {property && (
             <div className="grid grid-cols-2 gap-2.5 rounded border-2 border-ink bg-card p-3 shadow-[var(--shadow-hard)]">
@@ -143,7 +143,7 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
           )}
 
           {/* ALERTAS E AÇÕES */}
-          <section className="flex flex-1 flex-col min-h-0">
+          <section className="flex flex-1 flex-col lg:min-h-0">
             <h2 className="mb-2 font-display text-base italic text-ink">Histórico de Alertas e Ações</h2>
             <div className="flex-1 overflow-y-auto">
               <AlertList initialAlerts={alerts} />
@@ -152,7 +152,7 @@ export default async function PropertyDetail({ params }: PageProps<"/properties/
         </div>
 
         {/* COLUNA DIREITA: EXPECTATIVA DO CLIMA & NUVENS */}
-        <div className="lg:col-span-7 flex flex-col min-h-0 lg:overflow-y-auto pl-1">
+        <div className="lg:col-span-7 flex flex-col lg:min-h-0 lg:overflow-y-auto pl-1">
           {property && (
             <PropertyWeatherPanel
               daily={daily}

@@ -56,6 +56,16 @@ body {
   font-family: var(--font-mono), ui-monospace, monospace;
   position: relative;
   isolation: isolate;
+  /* viewport-fit=cover: keep content clear of notch / home indicator in standalone mode */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari zooms the page when focusing inputs under 16px */
+@media (pointer: coarse) {
+  input, select, textarea {
+    font-size: 16px;
+  }
 }
 
 /* Grain overlay for warmth + texture, fixed so it doesn't scroll */
@@ -127,4 +137,15 @@ h1, h2, h3, .font-display {
 .leaflet-container {
   background: var(--paper-deep) !important;
   font-family: var(--font-mono), monospace !important;
+}
+
+/* Finger-sized hit area for small controls; desktop mouse layout is unchanged */
+@media (pointer: coarse) {
+  .touch {
+    min-height: 44px;
+  }
+  a.touch {
+    display: inline-flex;
+    align-items: center;
+  }
 }

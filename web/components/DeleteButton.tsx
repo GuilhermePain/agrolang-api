@@ -41,7 +41,7 @@ export default function DeleteButton({
       type="button"
       onClick={handleClick}
       disabled={loading}
-      className="border border-risk-critical bg-paper px-3 py-1 font-mono text-xs font-semibold uppercase text-risk-critical transition hover:bg-risk-critical hover:text-paper disabled:opacity-50"
+      className="touch border border-risk-critical bg-paper px-3 py-1 font-mono text-xs font-semibold uppercase text-risk-critical transition hover:bg-risk-critical hover:text-paper disabled:opacity-50"
     >
       {loading ? "Excluindo..." : label}
     </button>

@@ -39,7 +39,7 @@ export default async function NotificationsPage() {
         <div>
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-accent"
+            className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-accent touch"
           >
             &larr; Voltar ao mapa de risco
           </Link>

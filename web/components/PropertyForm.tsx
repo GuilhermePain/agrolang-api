@@ -275,7 +275,7 @@ export default function PropertyForm({
             type="button"
             onClick={handleGetCurrentLocation}
             disabled={gettingLocation}
-            className="flex items-center justify-center gap-2 border-2 border-ink bg-paper px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-ink shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition hover:bg-accent hover:text-paper active:translate-x-0.5 active:translate-y-0.5"
+            className="touch flex items-center justify-center gap-2 border-2 border-ink bg-paper px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-ink shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition hover:bg-accent hover:text-paper active:translate-x-0.5 active:translate-y-0.5"
           >
             <GpsIcon className="h-4 w-4 shrink-0 text-accent group-hover:text-paper" />
             <span>{gettingLocation ? "Buscando GPS..." : "Usar Minha Localização Atual"}</span>

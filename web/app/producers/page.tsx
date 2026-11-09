@@ -32,7 +32,7 @@ export default async function ProducersPage() {
         <div>
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-accent"
+            className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-accent touch"
           >
             &larr; Voltar ao mapa de risco
           </Link>
@@ -44,7 +44,7 @@ export default async function ProducersPage() {
 
         <Link
           href="/producers/new"
-          className="w-fit border-2 border-ink bg-accent px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-paper transition hover:bg-ink"
+          className="touch w-fit border-2 border-ink bg-accent px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-paper transition hover:bg-ink"
         >
           + Cadastrar Produtor
         </Link>
@@ -107,19 +107,19 @@ export default async function ProducersPage() {
                 <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-3 font-mono text-xs">
                   <Link
                     href={`/producers/${producer.id}`}
-                    className="border border-ink bg-paper px-2.5 py-1 font-semibold uppercase text-ink hover:bg-ink hover:text-paper"
+                    className="touch border border-ink bg-paper px-2.5 py-1 font-semibold uppercase text-ink hover:bg-ink hover:text-paper"
                   >
                     Ver Ficha
                   </Link>
                   <Link
                     href={`/producers/${producer.id}/edit`}
-                    className="border border-line px-2.5 py-1 uppercase text-ink hover:border-ink"
+                    className="touch border border-line px-2.5 py-1 uppercase text-ink hover:border-ink"
                   >
                     Editar
                   </Link>
                   <Link
                     href={`/properties/new?producer_id=${producer.id}`}
-                    className="border border-line px-2.5 py-1 uppercase text-accent hover:border-accent font-semibold"
+                    className="touch border border-line px-2.5 py-1 uppercase text-accent hover:border-accent font-semibold"
                   >
                     + Talhão
                   </Link>
