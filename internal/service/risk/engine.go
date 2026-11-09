@@ -83,8 +83,23 @@ var defaultThresholds = map[Crop]CropThresholds{
 	CropFruit:       {FrostTempLimitC: 6.0, HeatMediumTempC: 38.0, HeatCriticalTempC: 41.0, RainMediumMM24h: 25.0, RainCriticalMM24h: 50.0},
 }
 
+// accentFolder strips the pt-BR diacritics so "Café" and "Feijão" match the
+// ASCII crop constants ("cafe", "feijao").
+var accentFolder = strings.NewReplacer(
+	"á", "a", "à", "a", "â", "a", "ã", "a", "ä", "a",
+	"é", "e", "è", "e", "ê", "e", "ë", "e",
+	"í", "i", "ì", "i", "î", "i", "ï", "i",
+	"ó", "o", "ò", "o", "ô", "o", "õ", "o", "ö", "o",
+	"ú", "u", "ù", "u", "û", "u", "ü", "u",
+	"ç", "c",
+)
+
+func normalizeCrop(crop Crop) Crop {
+	return Crop(accentFolder.Replace(strings.ToLower(strings.TrimSpace(string(crop)))))
+}
+
 func thresholdsFor(crop Crop) CropThresholds {
-	norm := Crop(strings.ToLower(string(crop)))
+	norm := normalizeCrop(crop)
 	if t, ok := defaultThresholds[norm]; ok {
 		return t
 	}

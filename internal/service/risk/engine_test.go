@@ -291,3 +291,34 @@ func TestEvaluate_SandySoil_AcceleratedWaterStress(t *testing.T) {
 		t.Fatalf("expected Low on clay soil within 36h, got %+v", resultClay)
 	}
 }
+
+// Crop names come from the quiz and the property forms with accents and mixed
+// case; they must resolve to the same thresholds as the plain-ASCII constants.
+func TestEvaluateAll_AccentedCropNamesUseTheirOwnThresholds(t *testing.T) {
+	cases := []struct {
+		crop string
+		temp float64 // above the default 3.0C limit, below the crop's own limit
+	}{
+		{"Café", 4.0}, // coffee: 5.0C
+		{"café", 4.0},
+		{" CAFÉ ", 4.0},
+		{"Feijão", 3.5},  // bean: 4.0C
+		{"Algodão", 4.0}, // cotton: 5.0C
+	}
+	for _, c := range cases {
+		t.Run(c.crop, func(t *testing.T) {
+			readings := []risk.WeatherReading{
+				{Time: time.Date(2026, 6, 1, 5, 0, 0, 0, time.UTC), TempAvgC: c.temp, HumidityPct: 80},
+			}
+			results := risk.EvaluateAll(risk.Property{Crop: risk.Crop(c.crop), CropStage: risk.StageFlowering}, readings)
+
+			var frost bool
+			for _, r := range results {
+				frost = frost || r.Alert == risk.AlertFrost
+			}
+			if !frost {
+				t.Errorf("expected a frost alert at %.1fC for %q, got %v", c.temp, c.crop, results)
+			}
+		})
+	}
+}
