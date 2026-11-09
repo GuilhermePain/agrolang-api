@@ -1,5 +1,5 @@
 import { CROP_OTHER } from "./options";
-import type { Profile, QuizAnswers, WorkStyle } from "./types";
+import type { CropStage, Profile, QuizAnswers, WorkStyle } from "./types";
 
 export type StepId =
   | "style"
@@ -34,8 +34,22 @@ export function normalizePhone(raw: string): string | null {
   return null;
 }
 
-export function cropValue(a: QuizAnswers): string {
-  return a.crop_choice === CROP_OTHER ? a.crop_custom.trim() : a.crop_choice.trim();
+/** The chosen crops with their display names ("outra" resolved to the typed name) and stages. */
+export function cropList(a: QuizAnswers): { crop: string; stage: CropStage | null }[] {
+  return a.crops.map((c) => ({
+    crop: c.choice === CROP_OTHER ? a.crop_custom.trim() : c.choice.trim(),
+    stage: c.stage,
+  }));
+}
+
+function validateCrops(a: QuizAnswers): string | null {
+  if (a.crops.length === 0) return "Escolha pelo menos uma cultura.";
+  const list = cropList(a);
+  if (list.some((c) => c.crop === "")) return "Digite o nome da outra cultura.";
+  const names = list.map((c) => c.crop.toLowerCase());
+  if (new Set(names).size !== names.length) return "Essa cultura já está marcada.";
+  if (list.some((c) => c.stage === null)) return "Escolha em que fase está cada cultura.";
+  return null;
 }
 
 /** Returns the message to show when the step can't advance yet, or null when it's complete. */
@@ -55,9 +69,7 @@ export function validateStep(id: StepId, a: QuizAnswers): string | null {
       }
       return null;
     case "crop":
-      if (cropValue(a) === "") return "Escolha ou digite a cultura.";
-      if (a.crop_stage === null) return "Escolha em que fase está.";
-      return null;
+      return validateCrops(a);
     case "location":
       if (a.latitude === null || a.longitude === null) return "Marque sua terra no mapa.";
       if (a.city.trim() === "" || !/^[A-Z]{2}$/.test(a.state)) return "Escolha a cidade na busca.";
@@ -91,8 +103,7 @@ const FIELD_TO_STEP: Record<string, StepId> = {
   property: "location",
   "property.latitude": "location",
   "property.longitude": "location",
-  "property.crop": "crop",
-  "property.crop_stage": "crop",
+  "property.crops": "crop",
   "property.soil_type": "soil",
 };
 

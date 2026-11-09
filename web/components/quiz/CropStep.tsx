@@ -1,7 +1,8 @@
 "use client";
 
 import { CROP_OPTIONS, CROP_OTHER, STAGE_OPTIONS } from "@/lib/quiz/options";
-import type { QuizAnswers } from "@/lib/quiz/types";
+import { cropList } from "@/lib/quiz/steps";
+import type { CropStage, QuizAnswers } from "@/lib/quiz/types";
 import { FieldShell } from "../FieldShell";
 import { ChoiceList } from "./ChoiceList";
 import { bigFieldClass, optionClass } from "./styles";
@@ -14,19 +15,32 @@ export default function CropStep({
   onChange: (patch: Partial<QuizAnswers>) => void;
 }) {
   const choices = [...CROP_OPTIONS, CROP_OTHER] as string[];
+  const names = cropList(answers);
+
+  function toggle(choice: string) {
+    const picked = answers.crops.some((c) => c.choice === choice);
+    onChange({
+      crops: picked
+        ? answers.crops.filter((c) => c.choice !== choice)
+        : [...answers.crops, { choice, stage: null }],
+    });
+  }
+
+  function setStage(choice: string, stage: CropStage) {
+    onChange({ crops: answers.crops.map((c) => (c.choice === choice ? { ...c, stage } : c)) });
+  }
 
   return (
     <>
-      <div role="radiogroup" aria-label="Cultura" className="grid grid-cols-2 gap-3">
+      <div role="group" aria-label="Culturas" className="grid grid-cols-2 gap-3">
         {choices.map((choice) => {
-          const selected = answers.crop_choice === choice;
+          const selected = answers.crops.some((c) => c.choice === choice);
           return (
             <button
               key={choice}
               type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => onChange({ crop_choice: choice })}
+              aria-pressed={selected}
+              onClick={() => toggle(choice)}
               className={optionClass(selected)}
             >
               <span className="font-semibold">{choice === CROP_OTHER ? "Outra" : choice}</span>
@@ -35,7 +49,7 @@ export default function CropStep({
         })}
       </div>
 
-      {answers.crop_choice === CROP_OTHER && (
+      {answers.crops.some((c) => c.choice === CROP_OTHER) && (
         <FieldShell label="Qual cultura?" htmlFor="crop_custom">
           <input
             id="crop_custom"
@@ -48,15 +62,22 @@ export default function CropStep({
         </FieldShell>
       )}
 
-      <p className="mt-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-        Em que fase está?
-      </p>
-      <ChoiceList
-        label="Fase do plantio"
-        options={STAGE_OPTIONS}
-        value={answers.crop_stage}
-        onChange={(crop_stage) => onChange({ crop_stage })}
-      />
+      {answers.crops.map((entry, i) => {
+        const name = names[i].crop || "outra cultura";
+        return (
+          <div key={entry.choice} className="flex flex-col gap-3">
+            <p className="mt-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+              Em que fase está: {name}?
+            </p>
+            <ChoiceList
+              label={`Fase de ${name}`}
+              options={STAGE_OPTIONS}
+              value={entry.stage}
+              onChange={(stage) => setStage(entry.choice, stage)}
+            />
+          </div>
+        );
+      })}
     </>
   );
 }

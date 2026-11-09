@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  cropValue,
+  cropList,
   firstIncompleteIndex,
   normalizePhone,
   profileOf,
@@ -50,13 +50,25 @@ describe("normalizePhone", () => {
   });
 });
 
-describe("cropValue", () => {
-  it("returns the chosen crop", () => {
-    expect(cropValue(answers({ crop_choice: "Milho" }))).toBe("Milho");
+describe("cropList", () => {
+  it("returns every chosen crop with its own stage, in order", () => {
+    const list = cropList(
+      answers({
+        crops: [
+          { choice: "Milho", stage: "flowering" },
+          { choice: "Café", stage: "harvest" },
+        ],
+      })
+    );
+    expect(list).toEqual([
+      { crop: "Milho", stage: "flowering" },
+      { crop: "Café", stage: "harvest" },
+    ]);
   });
 
-  it("returns the typed crop when 'outra' is chosen", () => {
-    expect(cropValue(answers({ crop_choice: "outra", crop_custom: "  Mandioca " }))).toBe("Mandioca");
+  it("uses the typed name for 'outra'", () => {
+    const list = cropList(answers({ crops: [{ choice: "outra", stage: "harvest" }], crop_custom: "  Mandioca " }));
+    expect(list).toEqual([{ crop: "Mandioca", stage: "harvest" }]);
   });
 });
 
@@ -85,12 +97,45 @@ describe("validateStep", () => {
   });
 
   it("validates the crop step", () => {
-    expect(validateStep("crop", answers())).toBe("Escolha ou digite a cultura.");
-    expect(validateStep("crop", answers({ crop_choice: "Milho" }))).toBe("Escolha em que fase está.");
-    expect(validateStep("crop", answers({ crop_choice: "Milho", crop_stage: "flowering" }))).toBeNull();
-    expect(validateStep("crop", answers({ crop_choice: "outra", crop_stage: "harvest" }))).toBe(
-      "Escolha ou digite a cultura."
+    expect(validateStep("crop", answers())).toBe("Escolha pelo menos uma cultura.");
+    expect(validateStep("crop", answers({ crops: [{ choice: "Milho", stage: null }] }))).toBe(
+      "Escolha em que fase está cada cultura."
     );
+    expect(validateStep("crop", answers({ crops: [{ choice: "Milho", stage: "flowering" }] }))).toBeNull();
+    expect(
+      validateStep(
+        "crop",
+        answers({
+          crops: [
+            { choice: "Milho", stage: "flowering" },
+            { choice: "Café", stage: null },
+          ],
+        })
+      )
+    ).toBe("Escolha em que fase está cada cultura.");
+    expect(
+      validateStep(
+        "crop",
+        answers({
+          crops: [
+            { choice: "Milho", stage: "flowering" },
+            { choice: "Café", stage: "harvest" },
+          ],
+        })
+      )
+    ).toBeNull();
+  });
+
+  it("asks for the name of 'outra' and rejects a repeat of a listed crop", () => {
+    const outra = { choice: "outra", stage: "harvest" as const };
+    expect(validateStep("crop", answers({ crops: [outra] }))).toBe("Digite o nome da outra cultura.");
+    expect(validateStep("crop", answers({ crops: [outra], crop_custom: "Mandioca" }))).toBeNull();
+    expect(
+      validateStep(
+        "crop",
+        answers({ crops: [{ choice: "Milho", stage: "harvest" }, outra], crop_custom: " milho " })
+      )
+    ).toBe("Essa cultura já está marcada.");
   });
 
   it("validates the location step", () => {
@@ -132,7 +177,7 @@ describe("stepForField", () => {
     expect(stepForField("email")).toBe("account");
     expect(stepForField("producer.city")).toBe("location");
     expect(stepForField("property.latitude")).toBe("location");
-    expect(stepForField("property.crop_stage")).toBe("crop");
+    expect(stepForField("property.crops")).toBe("crop");
     expect(stepForField("property.soil_type")).toBe("soil");
     expect(stepForField("concerns")).toBe("concerns");
     expect(stepForField("unknown")).toBeNull();

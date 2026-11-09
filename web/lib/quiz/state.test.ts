@@ -62,6 +62,25 @@ describe("persistence", () => {
     expect("password" in loaded).toBe(false);
   });
 
+  it("keeps stored crops that are well-formed and drops the rest", () => {
+    const storage = fakeStorage({
+      [STORAGE_KEY]: JSON.stringify({
+        crops: [
+          { choice: "Milho", stage: "flowering" },
+          { choice: "Café", stage: null },
+          { choice: "Soja", stage: "bloom" },
+          { choice: 5, stage: null },
+          "Feijão",
+          null,
+        ],
+      }),
+    });
+    expect(loadAnswers(storage).crops).toEqual([
+      { choice: "Milho", stage: "flowering" },
+      { choice: "Café", stage: null },
+    ]);
+  });
+
   it("clears the stored answers", () => {
     const storage = fakeStorage({ [STORAGE_KEY]: "{}" });
     clearAnswers(storage);

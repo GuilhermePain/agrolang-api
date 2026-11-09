@@ -1,4 +1,4 @@
-import { cropValue, normalizePhone, profileOf } from "./steps";
+import { cropList, normalizePhone, profileOf } from "./steps";
 import type { Concern, CropStage, Profile, QuizAnswers, SoilType } from "./types";
 
 export type SignupPayload = {
@@ -14,9 +14,9 @@ export type SignupPayload = {
   property?: {
     latitude: number;
     longitude: number;
-    crop: string;
     soil_type: SoilType;
-    crop_stage: CropStage;
+    /** One property is created per crop, sharing the location and soil. */
+    crops: { crop: string; crop_stage: CropStage }[];
   };
 };
 
@@ -46,14 +46,17 @@ export function buildSignupPayload(a: QuizAnswers, password: string): SignupPayl
     };
   }
 
-  const crop = cropValue(a);
+  const crops: { crop: string; crop_stage: CropStage }[] = [];
+  for (const { crop, stage } of cropList(a)) {
+    if (crop === "" || stage === null) throw new Error(INCOMPLETE);
+    crops.push({ crop, crop_stage: stage });
+  }
   if (
     a.areas_bucket === null ||
-    a.crop_stage === null ||
+    crops.length === 0 ||
     a.soil_type === null ||
     a.latitude === null ||
-    a.longitude === null ||
-    crop === ""
+    a.longitude === null
   ) {
     throw new Error(INCOMPLETE);
   }
@@ -66,9 +69,8 @@ export function buildSignupPayload(a: QuizAnswers, password: string): SignupPayl
     property: {
       latitude: a.latitude,
       longitude: a.longitude,
-      crop,
       soil_type: a.soil_type,
-      crop_stage: a.crop_stage,
+      crops,
     },
   };
 }

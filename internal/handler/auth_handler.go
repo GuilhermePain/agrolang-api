@@ -112,12 +112,14 @@ func (h *AuthHandler) signup(w http.ResponseWriter, r *http.Request) {
 			City:  strings.TrimSpace(req.Producer.City),
 			State: strings.ToUpper(strings.TrimSpace(req.Producer.State)),
 		}
-		input.Property = &model.Property{
-			Latitude:  *req.Property.Latitude,
-			Longitude: *req.Property.Longitude,
-			Crop:      strings.TrimSpace(req.Property.Crop),
-			SoilType:  req.Property.SoilType,
-			CropStage: req.Property.CropStage,
+		for _, c := range req.Property.Crops {
+			input.Properties = append(input.Properties, model.Property{
+				Latitude:  *req.Property.Latitude,
+				Longitude: *req.Property.Longitude,
+				Crop:      strings.TrimSpace(c.Crop),
+				SoilType:  req.Property.SoilType,
+				CropStage: c.CropStage,
+			})
 		}
 	}
 

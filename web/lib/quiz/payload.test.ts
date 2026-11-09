@@ -9,9 +9,11 @@ const producer: QuizAnswers = {
   areas_bucket: "2-5",
   name: " José da Silva ",
   phone: "19 99999-9999",
-  crop_choice: "outra",
+  crops: [
+    { choice: "Milho", stage: "flowering" },
+    { choice: "outra", stage: "harvest" },
+  ],
   crop_custom: "Mandioca",
-  crop_stage: "flowering",
   city: "Campinas",
   state: "SP",
   latitude: -22.9099,
@@ -52,9 +54,11 @@ describe("buildSignupPayload", () => {
       property: {
         latitude: -22.9099,
         longitude: -47.0626,
-        crop: "Mandioca",
         soil_type: "argiloso",
-        crop_stage: "flowering",
+        crops: [
+          { crop: "Milho", crop_stage: "flowering" },
+          { crop: "Mandioca", crop_stage: "harvest" },
+        ],
       },
     });
   });
@@ -80,6 +84,10 @@ describe("buildSignupPayload", () => {
     expect(() => buildSignupPayload({ ...producer, latitude: null }, "segredo123")).toThrow(
       "incomplete quiz answers"
     );
+    expect(() => buildSignupPayload({ ...producer, crops: [] }, "segredo123")).toThrow("incomplete quiz answers");
+    expect(() =>
+      buildSignupPayload({ ...producer, crops: [{ choice: "Milho", stage: null }] }, "segredo123")
+    ).toThrow("incomplete quiz answers");
     expect(() => buildSignupPayload({ ...technician, producers_bucket: null }, "segredo123")).toThrow(
       "incomplete quiz answers"
     );

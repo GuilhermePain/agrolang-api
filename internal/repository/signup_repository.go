@@ -15,20 +15,20 @@ import (
 var ErrEmailTaken = errors.New("repository: email already registered")
 
 // SignupInput carries everything created at account signup. Producer and
-// Property are set for the producer profile and nil for technicians. The
-// producer's name and phone are copied from User.
+// Properties are set for the producer profile and empty for technicians; there
+// is one property per crop. The producer's name and phone are copied from User.
 type SignupInput struct {
 	User             model.User
 	Producer         *model.Producer
-	Property         *model.Property
+	Properties       []model.Property
 	SessionTokenHash string
 	SessionExpiresAt time.Time
 }
 
 type SignupResult struct {
-	User     model.User
-	Producer *model.Producer
-	Property *model.Property
+	User       model.User
+	Producer   *model.Producer
+	Properties []model.Property
 }
 
 type SignupRepository struct {
@@ -91,24 +91,23 @@ func (r *SignupRepository) Signup(ctx context.Context, in SignupInput) (SignupRe
 		}
 		result.Producer = &producer
 
-		if in.Property != nil {
-			const insertProperty = `
-				INSERT INTO properties (producer_id, location, crop, soil_type, crop_stage)
-				VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6)
-				RETURNING id, producer_id, ST_X(location::geometry), ST_Y(location::geometry),
-					crop, soil_type, crop_stage, created_at, updated_at`
+		const insertProperty = `
+			INSERT INTO properties (producer_id, location, crop, soil_type, crop_stage)
+			VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326), $4, $5, $6)
+			RETURNING id, producer_id, ST_X(location::geometry), ST_Y(location::geometry),
+				crop, soil_type, crop_stage, created_at, updated_at`
 
+		for _, prop := range in.Properties {
 			var property model.Property
 			if err := tx.QueryRow(ctx, insertProperty,
-				producer.ID, in.Property.Longitude, in.Property.Latitude,
-				in.Property.Crop, in.Property.SoilType, in.Property.CropStage,
+				producer.ID, prop.Longitude, prop.Latitude, prop.Crop, prop.SoilType, prop.CropStage,
 			).Scan(
 				&property.ID, &property.ProducerID, &property.Longitude, &property.Latitude,
 				&property.Crop, &property.SoilType, &property.CropStage, &property.CreatedAt, &property.UpdatedAt,
 			); err != nil {
 				return SignupResult{}, fmt.Errorf("repository: signup insert property: %w", err)
 			}
-			result.Property = &property
+			result.Properties = append(result.Properties, property)
 		}
 	}
 

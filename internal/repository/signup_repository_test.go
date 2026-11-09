@@ -19,9 +19,9 @@ func producerSignup(email string) repository.SignupInput {
 			Onboarding: map[string]string{"work_style": "family", "areas_bucket": "1"},
 		},
 		Producer: &model.Producer{City: "Campinas", State: "SP"},
-		Property: &model.Property{
-			Latitude: -22.9099, Longitude: -47.0626,
-			Crop: "Milho", SoilType: "argiloso", CropStage: model.CropStageFlowering,
+		Properties: []model.Property{
+			{Latitude: -22.9099, Longitude: -47.0626, Crop: "Milho", SoilType: "argiloso", CropStage: model.CropStageFlowering},
+			{Latitude: -22.9099, Longitude: -47.0626, Crop: "Café", SoilType: "argiloso", CropStage: model.CropStageHarvest},
 		},
 		SessionTokenHash: "token-hash",
 		SessionExpiresAt: time.Now().Add(time.Hour),
@@ -48,8 +48,17 @@ func TestSignupRepository_Producer_CreatesUserProducerPropertyAndSession(t *test
 	if result.Producer == nil || result.Producer.Name != "José" || result.Producer.WhatsAppPhone != "5519999999999" {
 		t.Errorf("expected producer copied from the user, got %+v", result.Producer)
 	}
-	if result.Property == nil || result.Property.ProducerID != result.Producer.ID {
-		t.Errorf("expected property linked to producer, got %+v", result.Property)
+	if len(result.Properties) != 2 {
+		t.Fatalf("expected one property per crop, got %+v", result.Properties)
+	}
+	for i, want := range []struct {
+		crop  string
+		stage model.CropStage
+	}{{"Milho", model.CropStageFlowering}, {"Café", model.CropStageHarvest}} {
+		got := result.Properties[i]
+		if got.ProducerID != result.Producer.ID || got.Crop != want.crop || got.CropStage != want.stage {
+			t.Errorf("property %d: expected %s/%s linked to the producer, got %+v", i, want.crop, want.stage, got)
+		}
 	}
 
 	owned, err := repository.NewProducerRepository(pool).ListByUser(ctx, result.User.ID)
@@ -78,8 +87,8 @@ func TestSignupRepository_Technician_CreatesOnlyUserAndSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Signup: %v", err)
 	}
-	if result.Producer != nil || result.Property != nil {
-		t.Errorf("expected no producer or property for a technician, got %+v / %+v", result.Producer, result.Property)
+	if result.Producer != nil || len(result.Properties) != 0 {
+		t.Errorf("expected no producer or properties for a technician, got %+v / %+v", result.Producer, result.Properties)
 	}
 	if result.User.Organization == nil || *result.User.Organization != org {
 		t.Errorf("expected organization saved, got %v", result.User.Organization)
@@ -116,7 +125,7 @@ func TestSignupRepository_FailureRollsBackEverything(t *testing.T) {
 	ctx := context.Background()
 
 	input := producerSignup("rollback@exemplo.com")
-	input.Property.CropStage = "not-a-stage" // violates the crop_stage enum
+	input.Properties[1].CropStage = "not-a-stage" // violates the crop_stage enum on the 2nd crop, after the 1st was inserted
 
 	if _, err := signups.Signup(ctx, input); err == nil {
 		t.Fatal("expected an error for an invalid crop stage")

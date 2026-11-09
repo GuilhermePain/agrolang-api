@@ -25,7 +25,7 @@ const TITLES: Record<StepId, { title: string; hint?: string }> = {
   style: { title: "Qual dessas combina com você?" },
   areas: { title: "Quantas áreas de plantio você tem?" },
   identity: { title: "Como podemos te chamar?", hint: "Os avisos chegam pelo WhatsApp." },
-  crop: { title: "O que você planta?" },
+  crop: { title: "O que você planta?", hint: "Pode marcar mais de uma. Diga a fase de cada." },
   location: { title: "Onde fica a sua terra?", hint: "Busque a cidade e ajuste o pino sobre a sua área." },
   soil: { title: "Como é a terra?" },
   concerns: {

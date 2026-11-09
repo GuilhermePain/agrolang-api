@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -41,13 +42,19 @@ type signupRequest struct {
 		State string `json:"state"`
 	} `json:"producer"`
 	Property *struct {
-		Latitude  *float64        `json:"latitude"`
-		Longitude *float64        `json:"longitude"`
-		Crop      string          `json:"crop"`
-		SoilType  string          `json:"soil_type"`
-		CropStage model.CropStage `json:"crop_stage"`
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		SoilType  string   `json:"soil_type"`
+		// Crops share the location and soil; each one becomes its own property
+		// so the risk engine applies that crop's thresholds and stage.
+		Crops []struct {
+			Crop      string          `json:"crop"`
+			CropStage model.CropStage `json:"crop_stage"`
+		} `json:"crops"`
 	} `json:"property"`
 }
+
+const maxSignupCrops = 10
 
 // validate returns user-facing (pt-BR) messages keyed by field; "producer.*"
 // and "property.*" keys point at fields nested in those objects.
@@ -132,15 +139,38 @@ func (req *signupRequest) validateProducerAndProperty(fields map[string]string) 
 	if p.Longitude == nil || *p.Longitude < -180 || *p.Longitude > 180 {
 		fields["property.longitude"] = "Marque a sua terra no mapa."
 	}
-	if strings.TrimSpace(p.Crop) == "" {
-		fields["property.crop"] = "Escolha ou digite a cultura."
-	}
 	if !validSoils[p.SoilType] {
 		fields["property.soil_type"] = "Escolha o tipo de solo."
 	}
-	if !validStages[p.CropStage] {
-		fields["property.crop_stage"] = "Escolha em que fase está."
+	if msg := cropsError(req); msg != "" {
+		fields["property.crops"] = msg
 	}
+}
+
+// cropsError returns the first problem with the crop list, or "" when it is valid.
+func cropsError(req *signupRequest) string {
+	crops := req.Property.Crops
+	if len(crops) == 0 {
+		return "Escolha pelo menos uma cultura."
+	}
+	if len(crops) > maxSignupCrops {
+		return fmt.Sprintf("Escolha até %d culturas.", maxSignupCrops)
+	}
+	seen := map[string]bool{}
+	for _, c := range crops {
+		name := strings.ToLower(strings.TrimSpace(c.Crop))
+		if name == "" {
+			return "Escolha ou digite a cultura."
+		}
+		if !validStages[c.CropStage] {
+			return "Escolha em que fase está cada cultura."
+		}
+		if seen[name] {
+			return "Essa cultura está repetida."
+		}
+		seen[name] = true
+	}
+	return ""
 }
 
 func validEmail(email string) bool {

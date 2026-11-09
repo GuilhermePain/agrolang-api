@@ -1,4 +1,4 @@
-import type { QuizAnswers } from "./types";
+import type { CropEntry, QuizAnswers } from "./types";
 
 export const STORAGE_KEY = "agrolang.quiz.v1";
 
@@ -9,9 +9,8 @@ export const initialAnswers: QuizAnswers = {
   name: "",
   phone: "",
   organization: "",
-  crop_choice: "",
+  crops: [],
   crop_custom: "",
-  crop_stage: null,
   city: "",
   state: "",
   latitude: null,
@@ -47,6 +46,14 @@ function defaultStorage(): StorageLike | null {
   }
 }
 
+const CROP_STAGES = ["germination", "flowering", "harvest"];
+
+function isCropEntry(value: unknown): value is CropEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const { choice, stage } = value as Record<string, unknown>;
+  return typeof choice === "string" && (stage === null || (typeof stage === "string" && CROP_STAGES.includes(stage)));
+}
+
 const NUMERIC_KEYS = new Set(["latitude", "longitude"]);
 
 function sameKind(key: string, initial: unknown, value: unknown): boolean {
@@ -69,7 +76,7 @@ export function loadAnswers(storage: StorageLike | null = defaultStorage()): Qui
     for (const key of Object.keys(initialAnswers)) {
       const value = (parsed as Record<string, unknown>)[key];
       if (value !== undefined && sameKind(key, (initialAnswers as Record<string, unknown>)[key], value)) {
-        merged[key] = value;
+        merged[key] = key === "crops" ? (value as unknown[]).filter(isCropEntry) : value;
       }
     }
     return merged as QuizAnswers;

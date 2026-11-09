@@ -29,7 +29,7 @@ func (f *fakeSignuper) Signup(ctx context.Context, in repository.SignupInput) (r
 	}
 	user := in.User
 	user.ID = "user-1"
-	return repository.SignupResult{User: user, Producer: in.Producer, Property: in.Property}, nil
+	return repository.SignupResult{User: user, Producer: in.Producer, Properties: in.Properties}, nil
 }
 
 type fakeAuthStore struct {
@@ -68,7 +68,9 @@ const validProducerSignup = `{
 	"concerns":["frost","severe_water_stress"],
 	"onboarding":{"work_style":"family","areas_bucket":"1"},
 	"producer":{"city":"Campinas","state":"sp"},
-	"property":{"latitude":-22.9099,"longitude":-47.0626,"crop":"Milho","soil_type":"argiloso","crop_stage":"flowering"}
+	"property":{"latitude":-22.9099,"longitude":-47.0626,"soil_type":"argiloso","crops":[
+		{"crop":"Milho","crop_stage":"flowering"},{"crop":" Café ","crop_stage":"harvest"}
+	]}
 }`
 
 const validTechnicianSignup = `{
@@ -132,8 +134,18 @@ func TestAuthHandler_Signup_Producer_Returns201WithSession(t *testing.T) {
 	if in.Producer == nil || in.Producer.State != "SP" {
 		t.Errorf("expected producer with upper-cased state, got %+v", in.Producer)
 	}
-	if in.Property == nil || in.Property.CropStage != model.CropStageFlowering {
-		t.Errorf("expected property with flowering stage, got %+v", in.Property)
+	if len(in.Properties) != 2 {
+		t.Fatalf("expected one property per crop, got %+v", in.Properties)
+	}
+	first, second := in.Properties[0], in.Properties[1]
+	if first.Crop != "Milho" || first.CropStage != model.CropStageFlowering {
+		t.Errorf("expected Milho in flowering, got %+v", first)
+	}
+	if second.Crop != "Café" || second.CropStage != model.CropStageHarvest {
+		t.Errorf("expected trimmed Café in harvest, got %+v", second)
+	}
+	if second.Latitude != first.Latitude || second.Longitude != first.Longitude || second.SoilType != "argiloso" {
+		t.Errorf("expected every crop to share the location and soil, got %+v / %+v", first, second)
 	}
 }
 
@@ -146,8 +158,8 @@ func TestAuthHandler_Signup_Technician_HasNoProducerOrProperty(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if signuper.got.Producer != nil || signuper.got.Property != nil {
-		t.Errorf("expected no producer/property, got %+v / %+v", signuper.got.Producer, signuper.got.Property)
+	if signuper.got.Producer != nil || len(signuper.got.Properties) != 0 {
+		t.Errorf("expected no producer/properties, got %+v / %+v", signuper.got.Producer, signuper.got.Properties)
 	}
 	if signuper.got.User.Organization == nil || *signuper.got.User.Organization != "Coopera Campo" {
 		t.Errorf("expected organization saved, got %v", signuper.got.User.Organization)
@@ -174,6 +186,37 @@ func TestAuthHandler_Signup_InvalidBody_Returns400WithFieldMessages(t *testing.T
 		if resp.Fields[key] == "" {
 			t.Errorf("expected a message for field %q, got fields %v", key, resp.Fields)
 		}
+	}
+}
+
+func TestAuthHandler_Signup_InvalidCrops_Returns400OnPropertyCrops(t *testing.T) {
+	cases := map[string]string{
+		"no crops":      `"crops":[]`,
+		"missing crops": `"crops":null`,
+		"empty name":    `"crops":[{"crop":"  ","crop_stage":"flowering"}]`,
+		"bad stage":     `"crops":[{"crop":"Milho","crop_stage":"bloom"}]`,
+		"duplicate":     `"crops":[{"crop":"Milho","crop_stage":"flowering"},{"crop":" milho ","crop_stage":"harvest"}]`,
+		"too many":      `"crops":[` + strings.TrimSuffix(strings.Repeat(`{"crop":"c","crop_stage":"harvest"},`, 11), ",") + `]`,
+	}
+	for name, crops := range cases {
+		t.Run(name, func(t *testing.T) {
+			mux := newAuthMux(&fakeSignuper{}, &fakeAuthStore{})
+			body := validProducerSignup[:strings.Index(validProducerSignup, `"crops"`)] + crops + "}\n}"
+			rec := postJSON(mux, "/auth/signup", body)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp struct {
+				Fields map[string]string `json:"fields"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.Fields["property.crops"] == "" {
+				t.Errorf("expected a property.crops message, got %v", resp.Fields)
+			}
+		})
 	}
 }
 
